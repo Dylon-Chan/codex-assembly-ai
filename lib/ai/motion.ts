@@ -59,7 +59,7 @@ export async function referenceToInlineImage(referenceImageUrl: string): Promise
     throw new Error("Reference image URL must be a trusted generated image URL.");
   }
 
-  const response = await fetch(parsed.toString());
+  const response = await fetch(parsed.toString(), { redirect: "error" });
   if (!response.ok) {
     throw new Error("Reference image could not be loaded.");
   }
@@ -178,7 +178,10 @@ export async function proxyMotionContent(uri: string): Promise<Response> {
     return new Response("Motion content URI is not trusted.", { status: 400 });
   }
 
-  const response = await fetch(parsed.toString(), { headers: { "x-goog-api-key": key } });
+  const response = await fetch(parsed.toString(), {
+    headers: { "x-goog-api-key": key },
+    redirect: "error"
+  });
   if (!response.ok) {
     return new Response("Motion content could not be loaded.", { status: response.status });
   }
