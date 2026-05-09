@@ -160,7 +160,7 @@ export function buildAnalysisPrompt(manualFile: ManualFile, partPhotoNames: stri
           {
             type: "input_file",
             filename: manualFile.filename,
-            file_data: manualFile.base64Data
+            file_data: `data:${manualFile.mimeType};base64,${manualFile.base64Data}`
           }
         ]
       }

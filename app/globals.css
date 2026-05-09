@@ -577,6 +577,12 @@ button:disabled {
   gap: 14px;
 }
 
+.stepMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .workspaceHeader h1 {
   margin-top: 4px;
   font-size: 28px;
@@ -709,6 +715,7 @@ button:disabled {
 }
 
 .imageButton {
+  position: relative;
   width: 100%;
   min-height: 380px;
   padding: 0;
@@ -1183,15 +1190,15 @@ button:disabled {
 
   .actionRow,
   .checkActions,
-  .stepControls,
-  .voiceButtons,
-  .cameraHeader {
-    grid-template-columns: 1fr;
+  .stepControls {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .voiceButtons,
   .cameraHeader {
     display: grid;
+    grid-template-columns: 1fr;
   }
 
   .voiceButtons .secondaryButton,

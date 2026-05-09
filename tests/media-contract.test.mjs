@@ -32,6 +32,14 @@ test("motion video routes create, poll, and proxy content", () => {
   assert.match(read("app/api/motion/content/route.ts"), /proxyMotionContent/);
 });
 
+test("verify route infers image MIME for extension-accepted uploads", () => {
+  const source = read("app/api/verify/route.ts");
+  assert.match(source, /imageMimeType/);
+  assert.match(source, /\\.jpe\?g/);
+  assert.match(source, /image\/jpeg/);
+  assert.match(source, /data:\$\{imageMimeType\(file\)\};base64/);
+});
+
 test("realtime session route exists, defaults model, supports override, and never exposes server key", () => {
   const source = read("app/api/realtime/session/route.ts");
   assert.match(source, /gpt-realtime-2/);

@@ -41,11 +41,11 @@ test("analyze route reads manual arrayBuffer and creates base64 manualFile", () 
   assert.match(source, /base64Data/);
 });
 
-test("analysis helper sends uploaded PDF as Responses input_file base64 data", () => {
+test("analysis helper sends uploaded PDF as Responses input_file data URL", () => {
   const source = analyzeSource();
   assert.match(source, /type:\s*"input_file"/);
   assert.match(source, /file_data/);
-  assert.match(source, /file_data:\s*manualFile\.base64Data/);
+  assert.match(source, /data:\$\{manualFile\.mimeType\};base64,\$\{manualFile\.base64Data\}/);
 });
 
 test("analysis prompt asks for exact product specific output without generic fallback", () => {
