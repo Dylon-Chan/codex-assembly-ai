@@ -17,7 +17,6 @@ import {
   Lock,
   Mic,
   MicOff,
-  Play,
   RefreshCw,
   RotateCcw,
   Square,
@@ -242,6 +241,7 @@ export default function Home() {
   const cameraRunIdRef = useRef(0);
   const motionRunIdsRef = useRef<Record<string, number>>({});
   const motionPollInFlightRef = useRef<Set<string>>(new Set());
+  const autoMotionStartedRef = useRef<Set<string>>(new Set());
   const motionsRef = useRef<Record<string, MotionState>>({});
   const handledToolCallsRef = useRef<Set<string>>(new Set());
   const productPhotoBase64Ref = useRef<string | null>(null);
@@ -249,8 +249,6 @@ export default function Home() {
   const currentStep = analysis?.steps[currentStepIndex];
   const currentVisual = currentStep ? visuals[currentStep.id] : undefined;
   const currentMotion = currentStep ? motions[currentStep.id] : undefined;
-  const currentMotionBusy = Boolean(currentMotion && ACTIVE_MOTION_STATUSES.has(currentMotion.status));
-  const canCreateCurrentMotion = currentVisual?.status === "ready" && Boolean(currentVisual.imageUrl) && !currentMotionBusy;
   const currentStepDone = Boolean(currentStep && completedSteps.has(currentStep.id));
   const canContinue =
     Boolean(analysis && currentStepIndex < (analysis?.steps.length ?? 0) - 1) &&
@@ -329,6 +327,7 @@ export default function Home() {
       runIdRef.current = runId;
       setVisuals(Object.fromEntries(nextAnalysis.steps.map((step) => [step.id, { status: "idle" as const }])));
       motionRunIdsRef.current = {};
+      autoMotionStartedRef.current.clear();
       setMotions({});
       setIsZoomed(false);
 
@@ -371,6 +370,9 @@ export default function Home() {
       const retryRunId = retryRunIdRef.current + 1;
       retryRunIdRef.current = retryRunId;
       motionRunIdsRef.current[step.id] = (motionRunIdsRef.current[step.id] ?? 0) + 1;
+      [...autoMotionStartedRef.current]
+        .filter((key) => key.startsWith(`${step.id}:`))
+        .forEach((key) => autoMotionStartedRef.current.delete(key));
       setMotions((previous) => {
         const next = { ...previous };
         delete next[step.id];
@@ -467,6 +469,24 @@ export default function Home() {
     },
     [analysis, setStepMotion, visuals]
   );
+
+  useEffect(() => {
+    if (!analysis) return;
+
+    analysis.steps.forEach((step) => {
+      const visual = visuals[step.id];
+      if (visual?.status !== "ready" || !visual.imageUrl) return;
+
+      const currentMotionState = motions[step.id];
+      if (currentMotionState && currentMotionState.status !== "error") return;
+
+      const autoMotionKey = `${step.id}:${visual.imageUrl}`;
+      if (autoMotionStartedRef.current.has(autoMotionKey)) return;
+
+      autoMotionStartedRef.current.add(autoMotionKey);
+      void createMotionForStep(step);
+    });
+  }, [analysis, createMotionForStep, motions, visuals]);
 
   useEffect(() => {
     if (!activeMotionPollKey) return undefined;
@@ -1466,14 +1486,6 @@ export default function Home() {
                               : "CSS technical preview"}
                     </strong>
                   </div>
-                  <button
-                    className="secondaryButton"
-                    disabled={!currentStep || !canCreateCurrentMotion}
-                    onClick={() => currentStep && void createMotionForStep(currentStep)}
-                  >
-                    <Play size={15} />
-                    Create motion
-                  </button>
                 </div>
                 <div className="motionStage">
                   {currentMotion?.status === "ready" && currentMotion.videoUrl ? (

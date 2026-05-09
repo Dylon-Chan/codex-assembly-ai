@@ -74,15 +74,17 @@ test("motion diagram section can be hidden and shown from the dark dashboard", (
   assert.match(source, /className=\{`visualFrame \$\{isZoomed \? "zoomed" : ""\}`\}/);
 });
 
-test("veo motion view presents its title above the video stage", () => {
+test("veo motion view presents its title above the video stage and auto-starts from ready images", () => {
   const source = page();
   assert.match(source, /className="motionPreviewHeader"/);
   assert.match(source, /className="motionTitle"/);
   assert.match(source, /<span>Veo Motion View<\/span>/);
   assert.match(source, /className="motionStage"/);
+  assert.match(source, /autoMotionStartedRef/);
+  assert.match(source, /void createMotionForStep\(step\)/);
+  assert.doesNotMatch(source, /Create motion/);
   assert.ok(source.indexOf('className="motionPreviewHeader"') < source.indexOf('className="motionStage"'));
   assert.ok(source.indexOf("<span>Veo Motion View</span>") < source.indexOf('className="motionStage"'));
-  assert.ok(source.indexOf("Create motion") < source.indexOf('className="motionStage"'));
 });
 
 test("progress photo and check flow use verify pipeline", () => {
