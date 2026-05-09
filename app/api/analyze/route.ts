@@ -4,8 +4,14 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-function isFile(value: FormDataEntryValue | null): value is File {
+const MAX_MANUAL_BYTES = 50 * 1024 * 1024;
+
+function isFile(value: unknown): value is File {
   return value instanceof File;
+}
+
+function isPdfManual(file: File): boolean {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 }
 
 export async function POST(request: Request) {
@@ -15,6 +21,14 @@ export async function POST(request: Request) {
 
     if (!isFile(manual)) {
       return NextResponse.json({ error: "Manual PDF file is required." }, { status: 400 });
+    }
+
+    if (!isPdfManual(manual)) {
+      return NextResponse.json({ error: "Manual upload must be a PDF file." }, { status: 400 });
+    }
+
+    if (manual.size > MAX_MANUAL_BYTES) {
+      return NextResponse.json({ error: "Manual PDF must be 50 MB or smaller." }, { status: 413 });
     }
 
     const arrayBuffer = await manual.arrayBuffer();
