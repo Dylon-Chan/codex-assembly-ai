@@ -66,6 +66,7 @@ export default function Home() {
   const [motions, setMotions] = useState<Record<string, MotionState>>({});
   const [voiceState, setVoiceState] = useState<VoiceState>("off");
   const runIdRef = useRef(0);
+  const retryRunIdRef = useRef(0);
 
   const currentStep = analysis?.steps[currentStepIndex];
   const currentVisual = currentStep ? visuals[currentStep.id] : undefined;
@@ -133,8 +134,8 @@ export default function Home() {
 
   const generateStepVisual = useCallback(
     async (projectName: string, step: AssemblyStep) => {
-      const runId = runIdRef.current + 1;
-      runIdRef.current = runId;
+      const retryRunId = retryRunIdRef.current + 1;
+      retryRunIdRef.current = retryRunId;
       setMotions((previous) => {
         const next = { ...previous };
         delete next[step.id];
@@ -149,13 +150,13 @@ export default function Home() {
           body: JSON.stringify({ projectName, step })
         });
         const payload = (await response.json().catch(() => ({}))) as IllustrateResponse;
-        if (runIdRef.current !== runId) return;
+        if (retryRunIdRef.current !== retryRunId) return;
         if (!response.ok || !payload.imageUrl) {
           throw new Error(payload.error || "Illustration generation failed.");
         }
         setStepVisual(step.id, { status: "ready", imageUrl: payload.imageUrl });
       } catch (error) {
-        if (runIdRef.current !== runId) return;
+        if (retryRunIdRef.current !== retryRunId) return;
         setStepVisual(step.id, {
           status: "error",
           error: error instanceof Error ? error.message : "Illustration generation failed."
@@ -216,6 +217,7 @@ export default function Home() {
 
   const resetWorkspace = useCallback(() => {
     runIdRef.current += 1;
+    retryRunIdRef.current += 1;
     setAnalysis(null);
     setCurrentStepIndex(0);
     setCompletedSteps(new Set());
