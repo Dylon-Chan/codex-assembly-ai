@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -49,6 +49,12 @@ type VerifyResponse = {
   error?: string;
 };
 
+type MotionResponse = MotionState & {
+  error?: string;
+};
+
+const ACTIVE_MOTION_STATUSES = new Set<MotionState["status"]>(["creating", "queued", "in_progress"]);
+
 export default function Home() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -70,10 +76,12 @@ export default function Home() {
   const retryRunIdRef = useRef(0);
   const analysisRunIdRef = useRef(0);
   const verifyRunIdRef = useRef(0);
+  const motionsRef = useRef<Record<string, MotionState>>({});
 
   const currentStep = analysis?.steps[currentStepIndex];
   const currentVisual = currentStep ? visuals[currentStep.id] : undefined;
   const currentMotion = currentStep ? motions[currentStep.id] : undefined;
+  const canCreateCurrentMotion = currentVisual?.status === "ready" && Boolean(currentVisual.imageUrl);
   const currentStepDone = Boolean(currentStep && completedSteps.has(currentStep.id));
   const canContinue =
     Boolean(analysis && currentStepIndex < (analysis?.steps.length ?? 0) - 1) &&
@@ -91,6 +99,15 @@ export default function Home() {
   const currentStepScrews = currentStep?.screws ?? [];
   const currentStepParts = currentStep?.parts ?? [];
   const currentStepCautions = currentStep?.cautions ?? [];
+  const activeMotionPollKey = useMemo(
+    () =>
+      Object.entries(motions)
+        .filter(([, motion]) => Boolean(motion.operationId) && ACTIVE_MOTION_STATUSES.has(motion.status))
+        .map(([stepId, motion]) => `${stepId}:${motion.operationId}:${motion.status}`)
+        .sort()
+        .join("|"),
+    [motions]
+  );
 
   const partPhotoLabel = useMemo(() => {
     if (partPhotos.length === 0) return "No part photos";
@@ -101,6 +118,14 @@ export default function Home() {
   const setStepVisual = useCallback((stepId: string, visual: StepVisualState) => {
     setVisuals((previous) => ({ ...previous, [stepId]: visual }));
   }, []);
+
+  const setStepMotion = useCallback((stepId: string, motion: MotionState) => {
+    setMotions((previous) => ({ ...previous, [stepId]: motion }));
+  }, []);
+
+  useEffect(() => {
+    motionsRef.current = motions;
+  }, [motions]);
 
   const initializeVisualQueue = useCallback(
     (nextAnalysis: AnalysisResult) => {
@@ -173,6 +198,127 @@ export default function Home() {
     },
     [setStepVisual]
   );
+
+  const createMotionForStep = useCallback(
+    async (step: AssemblyStep) => {
+      if (!analysis) {
+        setStepMotion(step.id, {
+          status: "error",
+          progress: 0,
+          error: "Build a guide before creating motion."
+        });
+        return;
+      }
+
+      const visual = visuals[step.id];
+      if (visual?.status !== "ready" || !visual.imageUrl) {
+        setStepMotion(step.id, {
+          status: "error",
+          progress: 0,
+          error: "Generate the reference image before creating motion."
+        });
+        return;
+      }
+
+      setStepMotion(step.id, { status: "creating", progress: 20 });
+
+      try {
+        const response = await fetch("/api/motion/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectName: analysis.projectName,
+            step,
+            referenceImageUrl: visual.imageUrl
+          })
+        });
+        const payload = (await response.json().catch(() => ({}))) as MotionResponse;
+        if (!response.ok || !payload.status) {
+          throw new Error(payload.error || "Motion creation failed.");
+        }
+        setStepMotion(step.id, {
+          status: payload.status,
+          progress: payload.progress ?? (payload.status === "ready" ? 100 : 20),
+          operationId: payload.operationId,
+          videoUrl: payload.videoUrl,
+          error: payload.error
+        });
+      } catch (error) {
+        setStepMotion(step.id, {
+          status: "error",
+          progress: 0,
+          error: error instanceof Error ? error.message : "Motion creation failed."
+        });
+      }
+    },
+    [analysis, setStepMotion, visuals]
+  );
+
+  useEffect(() => {
+    if (!activeMotionPollKey) return undefined;
+
+    let isCancelled = false;
+
+    const pollMotion = async (stepId: string, operationId: string) => {
+      try {
+        const response = await fetch("/api/motion/poll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operationId })
+        });
+        const payload = (await response.json().catch(() => ({}))) as MotionResponse;
+        if (isCancelled) return;
+        if (!response.ok || !payload.status) {
+          throw new Error(payload.error || "Motion polling failed.");
+        }
+        setMotions((previous) => {
+          const current = previous[stepId];
+          if (!current || current.operationId !== operationId) return previous;
+          return {
+            ...previous,
+            [stepId]: {
+              status: payload.status,
+              progress: payload.progress ?? current.progress,
+              operationId: payload.operationId ?? current.operationId,
+              videoUrl: payload.videoUrl,
+              error: payload.error
+            }
+          };
+        });
+      } catch (error) {
+        if (isCancelled) return;
+        setMotions((previous) => {
+          const current = previous[stepId];
+          if (!current || current.operationId !== operationId) return previous;
+          return {
+            ...previous,
+            [stepId]: {
+              ...current,
+              status: "error",
+              progress: 0,
+              error: error instanceof Error ? error.message : "Motion polling failed."
+            }
+          };
+        });
+      }
+    };
+
+    const pollAll = () => {
+      const pollTargets = Object.entries(motionsRef.current).filter(
+        ([, motion]) => Boolean(motion.operationId) && ACTIVE_MOTION_STATUSES.has(motion.status)
+      );
+      pollTargets.forEach(([stepId, motion]) => {
+        if (motion.operationId) void pollMotion(stepId, motion.operationId);
+      });
+    };
+
+    pollAll();
+    const intervalId = window.setInterval(pollAll, 5000);
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeMotionPollKey]);
 
   const buildGuideFromFile = useCallback(
     async (file: File) => {
@@ -536,17 +682,47 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="motionPreview">
+              <div className={`motionPreview ${currentMotion?.status ?? "idle"}`}>
                 <div>
                   <span>Veo Motion View</span>
-                  <strong>{currentMotion?.status === "ready" ? "Motion ready" : "CSS technical preview"}</strong>
+                  <strong>
+                    {currentMotion?.status === "ready"
+                      ? "Motion ready"
+                      : currentMotion && ACTIVE_MOTION_STATUSES.has(currentMotion.status)
+                        ? "Creating motion"
+                        : currentMotion?.status === "unavailable"
+                          ? "Motion unavailable"
+                          : currentMotion?.status === "error"
+                            ? "Motion failed"
+                            : "CSS technical preview"}
+                  </strong>
                 </div>
-                <div className="motionTrack">
-                  <span />
-                  <span />
-                  <span />
+                <div className="motionStage">
+                  {currentMotion?.status === "ready" && currentMotion.videoUrl ? (
+                    <video autoPlay controls loop muted playsInline src={currentMotion.videoUrl} />
+                  ) : currentMotion && ACTIVE_MOTION_STATUSES.has(currentMotion.status) ? (
+                    <div className="motionProgressState">
+                      <span>{currentMotion.status === "creating" ? "Starting Veo generation" : "Rendering motion video"}</span>
+                      <div className="motionProgress" aria-label="Motion creation progress">
+                        <span style={{ width: `${Math.max(0, Math.min(100, currentMotion.progress))}%` }} />
+                      </div>
+                      <small>{Math.max(0, Math.min(100, currentMotion.progress))}%</small>
+                    </div>
+                  ) : currentMotion?.status === "unavailable" || currentMotion?.status === "error" ? (
+                    <p className="motionMessage">{currentMotion.error ?? "Motion video could not be created."}</p>
+                  ) : (
+                    <div className="motionTrack">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  )}
                 </div>
-                <button className="secondaryButton" disabled={currentVisual?.status !== "ready"}>
+                <button
+                  className="secondaryButton"
+                  disabled={!currentStep || !canCreateCurrentMotion}
+                  onClick={() => currentStep && void createMotionForStep(currentStep)}
+                >
                   <Play size={15} />
                   Create motion
                 </button>
