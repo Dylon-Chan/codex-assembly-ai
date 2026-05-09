@@ -50,3 +50,21 @@ test("initial shell includes upload sample empty center and disabled checks", ()
   assert.match(source, /Checks become available after a guide exists/);
   assert.match(source, /disabled=\{!analysis\}/);
 });
+
+test("generated visual queue replaces demo SVG after analysis", () => {
+  const source = page();
+  assert.match(source, /initializeVisualQueue/);
+  assert.match(source, /runIdRef/);
+  assert.match(source, /\/api\/illustrate/);
+  assert.match(source, /status: "loading"/);
+  assert.match(source, /status: "ready"/);
+  assert.doesNotMatch(source, /demoSvg/);
+});
+
+test("progress photo and check flow use verify pipeline", () => {
+  const source = page();
+  assert.match(source, /PHOTO_ATTACHED_RESULT/);
+  assert.match(source, /\/api\/verify/);
+  assert.match(source, /score >= 0\.72/);
+  assert.match(source, /AI found something to fix before continuing\./);
+});
