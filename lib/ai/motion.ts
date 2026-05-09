@@ -8,8 +8,9 @@ export type MotionCreateResult =
 
 const VEO_MODEL = "veo-3.1-fast-generate-preview";
 const MAX_REFERENCE_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_MOTION_VIDEO_BYTES = 120 * 1024 * 1024;
 const ALLOWED_REFERENCE_HOSTS = new Set(["oaidalleapiprodscus.blob.core.windows.net", "cdn.openai.com"]);
-const ALLOWED_VIDEO_HOST_SUFFIXES = [".googleapis.com", ".googleusercontent.com"];
+const GEMINI_MEDIA_HOST = "generativelanguage.googleapis.com";
 
 type MotionRecord = Record<string, unknown>;
 
@@ -173,7 +174,9 @@ export async function proxyMotionContent(uri: string): Promise<Response> {
   if (!key) return new Response("GEMINI_API_KEY or GOOGLE_API_KEY is required for Veo motion.", { status: 500 });
 
   const parsed = new URL(uri);
-  const trustedVideoHost = parsed.protocol === "https:" && ALLOWED_VIDEO_HOST_SUFFIXES.some((suffix) => parsed.hostname.endsWith(suffix));
+  const trustedVideoHost = parsed.protocol === "https:"
+    && parsed.hostname === GEMINI_MEDIA_HOST
+    && /^\/v1(?:beta)?\/files\/[^/]+/.test(parsed.pathname);
   if (!trustedVideoHost) {
     return new Response("Motion content URI is not trusted.", { status: 400 });
   }
@@ -186,10 +189,25 @@ export async function proxyMotionContent(uri: string): Promise<Response> {
     return new Response("Motion content could not be loaded.", { status: response.status });
   }
 
-  return new Response(response.body, {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.startsWith("video/")) {
+    return new Response("Motion content URI did not return video.", { status: 502 });
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > MAX_MOTION_VIDEO_BYTES) {
+    return new Response("Motion video is too large.", { status: 502 });
+  }
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength > MAX_MOTION_VIDEO_BYTES) {
+    return new Response("Motion video is too large.", { status: 502 });
+  }
+
+  return new Response(bytes, {
     status: response.status,
     headers: {
-      "content-type": response.headers.get("content-type") || "video/mp4",
+      "content-type": contentType,
       "cache-control": "private, max-age=300"
     }
   });
