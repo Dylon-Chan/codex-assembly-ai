@@ -135,6 +135,7 @@ export default function Home() {
       const runId = runIdRef.current + 1;
       runIdRef.current = runId;
       setVisuals(Object.fromEntries(nextAnalysis.steps.map((step) => [step.id, { status: "idle" as const }])));
+      motionRunIdsRef.current = {};
       setMotions({});
       setIsZoomed(false);
 
@@ -172,6 +173,7 @@ export default function Home() {
     async (projectName: string, step: AssemblyStep) => {
       const retryRunId = retryRunIdRef.current + 1;
       retryRunIdRef.current = retryRunId;
+      motionRunIdsRef.current[step.id] = (motionRunIdsRef.current[step.id] ?? 0) + 1;
       setMotions((previous) => {
         const next = { ...previous };
         delete next[step.id];
