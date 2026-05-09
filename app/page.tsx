@@ -21,7 +21,7 @@ import {
   Wrench,
   ZoomIn
 } from "lucide-react";
-import type { AnalysisResult, MotionState, StepVisualState, VerifyResult, VoiceState } from "../lib/types";
+import type { AnalysisResult, AssemblyStep, MotionState, StepVisualState, VerifyResult, VoiceState } from "../lib/types";
 
 const PHOTO_ATTACHED_RESULT: VerifyResult = {
   status: "warning",
@@ -127,6 +127,40 @@ export default function Home() {
           }
         }
       })();
+    },
+    [setStepVisual]
+  );
+
+  const generateStepVisual = useCallback(
+    async (projectName: string, step: AssemblyStep) => {
+      const runId = runIdRef.current + 1;
+      runIdRef.current = runId;
+      setMotions((previous) => {
+        const next = { ...previous };
+        delete next[step.id];
+        return next;
+      });
+      setStepVisual(step.id, { status: "loading" });
+
+      try {
+        const response = await fetch("/api/illustrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectName, step })
+        });
+        const payload = (await response.json().catch(() => ({}))) as IllustrateResponse;
+        if (runIdRef.current !== runId) return;
+        if (!response.ok || !payload.imageUrl) {
+          throw new Error(payload.error || "Illustration generation failed.");
+        }
+        setStepVisual(step.id, { status: "ready", imageUrl: payload.imageUrl });
+      } catch (error) {
+        if (runIdRef.current !== runId) return;
+        setStepVisual(step.id, {
+          status: "error",
+          error: error instanceof Error ? error.message : "Illustration generation failed."
+        });
+      }
     },
     [setStepVisual]
   );
@@ -253,9 +287,8 @@ export default function Home() {
 
   const retryCurrentVisual = useCallback(() => {
     if (!analysis || !currentStep) return;
-    const retryAnalysis = { ...analysis, steps: [currentStep] };
-    initializeVisualQueue(retryAnalysis);
-  }, [analysis, currentStep, initializeVisualQueue]);
+    void generateStepVisual(analysis.projectName, currentStep);
+  }, [analysis, currentStep, generateStepVisual]);
 
   const selectStep = useCallback((index: number) => {
     setCurrentStepIndex(index);
