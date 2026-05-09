@@ -194,6 +194,7 @@ export default function Home() {
   const retryRunIdRef = useRef(0);
   const analysisRunIdRef = useRef(0);
   const verifyRunIdRef = useRef(0);
+  const voiceRunIdRef = useRef(0);
   const motionRunIdsRef = useRef<Record<string, number>>({});
   const motionPollInFlightRef = useRef<Set<string>>(new Set());
   const motionsRef = useRef<Record<string, MotionState>>({});
@@ -543,6 +544,7 @@ export default function Home() {
     retryRunIdRef.current += 1;
     analysisRunIdRef.current += 1;
     verifyRunIdRef.current += 1;
+    voiceRunIdRef.current += 1;
     setAnalysis(null);
     setCurrentStepIndex(0);
     setCompletedSteps(new Set());
@@ -751,6 +753,7 @@ export default function Home() {
       peerConnectionRef.current = null;
       micStreamRef.current?.getTracks().forEach((track) => track.stop());
       micStreamRef.current = null;
+      voiceRunIdRef.current += 1;
       handledToolCallsRef.current.clear();
       if (!options?.keepCamera) stopCamera();
       setVoiceState("off");
@@ -931,16 +934,28 @@ export default function Home() {
     setAgentTranscript("");
 
     try {
+      const voiceRunId = voiceRunIdRef.current + 1;
+      voiceRunIdRef.current = voiceRunId;
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (voiceRunIdRef.current !== voiceRunId) {
+        micStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       micStreamRef.current = micStream;
 
       const sessionResponse = await fetch("/api/realtime/session", { method: "POST" });
+      if (voiceRunIdRef.current !== voiceRunId) return;
       const session = (await sessionResponse.json().catch(() => ({}))) as RealtimeSessionResponse;
       if (!sessionResponse.ok) throw new Error(session.error || "Realtime session failed.");
       const clientSecret = getRealtimeClientSecret(session);
       if (!clientSecret) throw new Error("Realtime session did not return a client secret.");
+      if (voiceRunIdRef.current !== voiceRunId) return;
 
       const peerConnection = new RTCPeerConnection();
+      if (voiceRunIdRef.current !== voiceRunId) {
+        peerConnection.close();
+        return;
+      }
       peerConnectionRef.current = peerConnection;
       micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
       peerConnection.ontrack = (event) => {
@@ -958,6 +973,11 @@ export default function Home() {
       };
 
       const dataChannel = peerConnection.createDataChannel("oai-events");
+      if (voiceRunIdRef.current !== voiceRunId) {
+        dataChannel.close();
+        peerConnection.close();
+        return;
+      }
       dataChannelRef.current = dataChannel;
       dataChannel.onopen = () => {
         setVoiceState("listening");
@@ -993,7 +1013,9 @@ export default function Home() {
       };
 
       const offer = await peerConnection.createOffer();
+      if (voiceRunIdRef.current !== voiceRunId) return;
       await peerConnection.setLocalDescription(offer);
+      if (voiceRunIdRef.current !== voiceRunId) return;
       const realtimeResponse = await fetch(
         `https://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model || REALTIME_MODEL_FALLBACK)}`,
         {
@@ -1005,8 +1027,10 @@ export default function Home() {
           body: offer.sdp
         }
       );
+      if (voiceRunIdRef.current !== voiceRunId) return;
       if (!realtimeResponse.ok) throw new Error("OpenAI Realtime SDP exchange failed.");
       const answer = await realtimeResponse.text();
+      if (voiceRunIdRef.current !== voiceRunId) return;
       await peerConnection.setRemoteDescription({ type: "answer", sdp: answer });
     } catch (error) {
       stopVoiceAgent({ keepCamera: true });
