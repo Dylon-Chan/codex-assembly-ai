@@ -872,14 +872,27 @@ button:disabled {
   }
 }
 
-@media (max-width: 1180px) {
-  .topBar,
-  .workspace {
+@media (max-width: 1240px) {
+  .topBar {
     grid-template-columns: 1fr;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(260px, 304px) minmax(0, 1fr);
+  }
+
+  .checksPanel {
+    grid-column: 1 / -1;
   }
 
   .statusCluster {
     justify-content: start;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
   }
 
   .panel,
@@ -890,9 +903,15 @@ button:disabled {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 540px) {
   .appShell {
     padding: 10px;
+  }
+
+  .actionRow,
+  .checkActions,
+  .stepControls {
+    grid-template-columns: 1fr;
   }
 
   .workspaceHeader,
