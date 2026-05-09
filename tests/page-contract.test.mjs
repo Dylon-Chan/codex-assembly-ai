@@ -19,6 +19,7 @@ test("sample button fetches bundled sample PDF and posts to analyze", () => {
   assert.match(source, /\/samples\/assembleai-sample-manual\.pdf/);
   assert.match(source, /fetch\("\/api\/analyze"/);
   assert.match(source, /formData\.append\("manual"/);
+  assert.match(source, /await buildGuideFromFile\(file\)/);
 });
 
 test("sample flow does not directly set sampleAnalysis client-side", () => {
@@ -32,4 +33,20 @@ test("page guards optional screws instruction and simpleCheck", () => {
   assert.match(source, /currentStep\?\.instruction/);
   assert.match(source, /currentStep\?\.simpleCheck/);
   assert.match(source, /currentStep\?\.screws \?\?/);
+  assert.match(source, /currentStep\?\.parts \?\?/);
+  assert.match(source, /currentStep\?\.cautions \?\?/);
+  assert.match(source, /currentStep\?\.duration \?\?/);
+  assert.match(source, /currentStep\?\.risk \?\?/);
+});
+
+test("initial shell includes upload sample empty center and disabled checks", () => {
+  const source = page();
+  assert.match(source, /Manual PDF/);
+  assert.match(source, /Product photo optional/);
+  assert.match(source, /Part photos optional/);
+  assert.match(source, /Let&apos;s Build/);
+  assert.match(source, /Sample/);
+  assert.match(source, /disabled=\{!manualFile \|\| isAnalyzing\}/);
+  assert.match(source, /Checks become available after a guide exists/);
+  assert.match(source, /disabled=\{!analysis\}/);
 });
