@@ -608,9 +608,9 @@ export default function Home() {
       return;
     }
 
+    const cameraRunId = cameraRunIdRef.current + 1;
+    cameraRunIdRef.current = cameraRunId;
     try {
-      const cameraRunId = cameraRunIdRef.current + 1;
-      cameraRunIdRef.current = cameraRunId;
       setCameraPending(true);
       setCameraError("");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -624,9 +624,15 @@ export default function Home() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => undefined);
       }
+      if (cameraRunIdRef.current !== cameraRunId) {
+        stream.getTracks().forEach((track) => track.stop());
+        if (videoRef.current?.srcObject === stream) videoRef.current.srcObject = null;
+        return;
+      }
       setCameraEnabled(true);
       setVoiceAction("Live camera ready for hands-free checks.");
     } catch (error) {
+      if (cameraRunIdRef.current !== cameraRunId) return;
       cameraStreamRef.current = null;
       setCameraEnabled(false);
       setCameraError(
@@ -635,7 +641,7 @@ export default function Home() {
           : "Camera permission was denied or unavailable. Upload a progress photo instead."
       );
     } finally {
-      setCameraPending(false);
+      if (cameraRunIdRef.current === cameraRunId) setCameraPending(false);
     }
   }, [analysis, cameraEnabled, cameraPending, stopCamera]);
 
@@ -942,9 +948,9 @@ export default function Home() {
     setVoiceTranscript("");
     setAgentTranscript("");
 
+    const voiceRunId = voiceRunIdRef.current + 1;
+    voiceRunIdRef.current = voiceRunId;
     try {
-      const voiceRunId = voiceRunIdRef.current + 1;
-      voiceRunIdRef.current = voiceRunId;
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (voiceRunIdRef.current !== voiceRunId) {
         micStream.getTracks().forEach((track) => track.stop());
@@ -975,6 +981,7 @@ export default function Home() {
       };
       peerConnection.onconnectionstatechange = () => {
         if (peerConnection.connectionState === "failed" || peerConnection.connectionState === "disconnected") {
+          if (voiceRunIdRef.current !== voiceRunId) return;
           stopVoiceAgent({ keepCamera: true });
           setVoiceState("error");
           setVoiceAction("Realtime voice connection dropped.");
@@ -1012,10 +1019,12 @@ export default function Home() {
         );
       };
       dataChannel.onmessage = (event) => {
+        if (voiceRunIdRef.current !== voiceRunId) return;
         const payload = JSON.parse(String(event.data)) as Record<string, unknown>;
         handleRealtimeEvent(payload);
       };
       dataChannel.onerror = () => {
+        if (voiceRunIdRef.current !== voiceRunId) return;
         stopVoiceAgent({ keepCamera: true });
         setVoiceState("error");
         setVoiceAction("Realtime voice data channel failed.");
@@ -1042,6 +1051,7 @@ export default function Home() {
       if (voiceRunIdRef.current !== voiceRunId) return;
       await peerConnection.setRemoteDescription({ type: "answer", sdp: answer });
     } catch (error) {
+      if (voiceRunIdRef.current !== voiceRunId) return;
       stopVoiceAgent({ keepCamera: true });
       setVoiceState("error");
       setVoiceAction(error instanceof Error ? error.message : "Realtime voice failed.");
