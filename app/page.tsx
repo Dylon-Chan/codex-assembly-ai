@@ -630,7 +630,7 @@ export default function Home() {
 
   const captureCameraFrame = useCallback(async (): Promise<File | null> => {
     const video = videoRef.current;
-    if (!video || !cameraEnabled) {
+    if (!video || !cameraEnabledRef.current) {
       setCameraError("Turn on the live camera or upload a progress photo.");
       return null;
     }
@@ -662,51 +662,54 @@ export default function Home() {
     setProgressPhoto(capturedFile);
     setCameraError("");
     return capturedFile;
-  }, [cameraEnabled]);
+  }, []);
+
+  const verifyStepPhoto = useCallback(async (step: AssemblyStep, photo: File | null) => {
+    const checkedStepId = step.id;
+    const verifyRunId = verifyRunIdRef.current + 1;
+    verifyRunIdRef.current = verifyRunId;
+    const formData = new FormData();
+    formData.append("stepTitle", step.title);
+    if (photo) formData.append("photo", photo);
+
+    setIsChecking(true);
+    setNotice("AI is checking this step.");
+    try {
+      const response = await fetch("/api/verify", { method: "POST", body: formData });
+      const payload = (await response.json().catch(() => ({}))) as VerifyResponse;
+      if (!response.ok || !payload.result) throw new Error(payload.error || "Progress verification failed.");
+      if (verifyRunIdRef.current !== verifyRunId) return;
+      const result = payload.result;
+      setVerifyResult(result);
+      setVerifiedStepId(checkedStepId);
+      if (result.status === "pass" || result.score >= 0.72) {
+        setCompletedSteps((previous) => new Set(previous).add(checkedStepId));
+        setNotice("Step verified. Ready to continue.");
+      } else {
+        setNotice("AI found something to fix before continuing.");
+      }
+    } catch (error) {
+      if (verifyRunIdRef.current !== verifyRunId) return;
+      setVerifyResult({
+        status: "fail",
+        score: 0,
+        message: "Needs review",
+        checklist: ["Verification request did not complete"],
+        nextFix: error instanceof Error ? error.message : "Retake the photo and try again."
+      });
+      setVerifiedStepId(checkedStepId);
+      setNotice(error instanceof Error ? error.message : "Progress verification failed.");
+    } finally {
+      if (verifyRunIdRef.current === verifyRunId) setIsChecking(false);
+    }
+  }, []);
 
   const checkCurrentStep = useCallback(
     async (photoOverride?: File | null) => {
       if (!currentStep) return;
-      const checkedStepId = currentStep.id;
-      const verifyRunId = verifyRunIdRef.current + 1;
-      verifyRunIdRef.current = verifyRunId;
-      const photo = photoOverride ?? progressPhoto;
-      const formData = new FormData();
-      formData.append("stepTitle", currentStep.title);
-      if (photo) formData.append("photo", photo);
-
-      setIsChecking(true);
-      setNotice("AI is checking this step.");
-      try {
-        const response = await fetch("/api/verify", { method: "POST", body: formData });
-        const payload = (await response.json().catch(() => ({}))) as VerifyResponse;
-        if (!response.ok || !payload.result) throw new Error(payload.error || "Progress verification failed.");
-        if (verifyRunIdRef.current !== verifyRunId) return;
-        const result = payload.result;
-        setVerifyResult(result);
-        setVerifiedStepId(checkedStepId);
-        if (result.status === "pass" || result.score >= 0.72) {
-          setCompletedSteps((previous) => new Set(previous).add(checkedStepId));
-          setNotice("Step verified. Ready to continue.");
-        } else {
-          setNotice("AI found something to fix before continuing.");
-        }
-      } catch (error) {
-        if (verifyRunIdRef.current !== verifyRunId) return;
-        setVerifyResult({
-          status: "fail",
-          score: 0,
-          message: "Needs review",
-          checklist: ["Verification request did not complete"],
-          nextFix: error instanceof Error ? error.message : "Retake the photo and try again."
-        });
-        setVerifiedStepId(checkedStepId);
-        setNotice(error instanceof Error ? error.message : "Progress verification failed.");
-      } finally {
-        if (verifyRunIdRef.current === verifyRunId) setIsChecking(false);
-      }
+      await verifyStepPhoto(currentStep, photoOverride ?? progressPhoto);
     },
-    [currentStep, progressPhoto]
+    [currentStep, progressPhoto, verifyStepPhoto]
   );
 
   const continueToNextStep = useCallback(() => {
@@ -839,7 +842,7 @@ export default function Home() {
         if (!capturedFile) {
           return { ok: false, message: "Camera frame could not be captured. Upload a progress photo instead." };
         }
-        await checkCurrentStep(capturedFile);
+        await verifyStepPhoto(activeStep, capturedFile);
         return { ok: true, message: `Captured camera frame and checked ${activeStep.title}.` };
       }
 
@@ -850,7 +853,7 @@ export default function Home() {
 
       return { ok: false, message: `Unsupported voice tool: ${name}` };
     },
-    [captureCameraFrame, checkCurrentStep, stopVoiceAgent]
+    [captureCameraFrame, stopVoiceAgent, verifyStepPhoto]
   );
 
   const handleRealtimeEvent = useCallback(
