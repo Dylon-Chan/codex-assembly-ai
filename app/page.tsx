@@ -177,6 +177,7 @@ export default function Home() {
   const [agentTranscript, setAgentTranscript] = useState("");
   const [voiceAction, setVoiceAction] = useState("Voice mode unlocks after analysis");
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraPending, setCameraPending] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [verifiedStepId, setVerifiedStepId] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -185,6 +186,10 @@ export default function Home() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const analysisRef = useRef<AnalysisResult | null>(null);
+  const currentStepIndexRef = useRef(0);
+  const completedStepsRef = useRef<Set<string>>(new Set());
+  const cameraEnabledRef = useRef(false);
   const runIdRef = useRef(0);
   const retryRunIdRef = useRef(0);
   const analysisRunIdRef = useRef(0);
@@ -192,6 +197,7 @@ export default function Home() {
   const motionRunIdsRef = useRef<Record<string, number>>({});
   const motionPollInFlightRef = useRef<Set<string>>(new Set());
   const motionsRef = useRef<Record<string, MotionState>>({});
+  const handledToolCallsRef = useRef<Set<string>>(new Set());
 
   const currentStep = analysis?.steps[currentStepIndex];
   const currentVisual = currentStep ? visuals[currentStep.id] : undefined;
@@ -243,6 +249,22 @@ export default function Home() {
   useEffect(() => {
     motionsRef.current = motions;
   }, [motions]);
+
+  useEffect(() => {
+    analysisRef.current = analysis;
+  }, [analysis]);
+
+  useEffect(() => {
+    currentStepIndexRef.current = currentStepIndex;
+  }, [currentStepIndex]);
+
+  useEffect(() => {
+    completedStepsRef.current = completedSteps;
+  }, [completedSteps]);
+
+  useEffect(() => {
+    cameraEnabledRef.current = cameraEnabled;
+  }, [cameraEnabled]);
 
   const initializeVisualQueue = useCallback(
     (nextAnalysis: AnalysisResult) => {
@@ -508,6 +530,15 @@ export default function Home() {
   }, [buildGuideFromFile]);
 
   const resetWorkspace = useCallback(() => {
+    dataChannelRef.current?.close();
+    dataChannelRef.current = null;
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    micStreamRef.current?.getTracks().forEach((track) => track.stop());
+    micStreamRef.current = null;
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     runIdRef.current += 1;
     retryRunIdRef.current += 1;
     analysisRunIdRef.current += 1;
@@ -525,6 +556,13 @@ export default function Home() {
     setIsAnalyzing(false);
     setIsChecking(false);
     setIsZoomed(false);
+    setVoiceState("off");
+    setVoiceTranscript("");
+    setAgentTranscript("");
+    setVoiceAction("Voice mode unlocks after analysis");
+    setCameraEnabled(false);
+    setCameraPending(false);
+    setCameraError("");
     motionRunIdsRef.current = {};
     motionPollInFlightRef.current.clear();
     setVisuals({});
@@ -543,9 +581,11 @@ export default function Home() {
     cameraStreamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraEnabled(false);
+    setCameraPending(false);
   }, []);
 
   const toggleCamera = useCallback(async () => {
+    if (cameraPending) return;
     if (cameraEnabled) {
       stopCamera();
       setCameraError("");
@@ -564,8 +604,10 @@ export default function Home() {
     }
 
     try {
+      setCameraPending(true);
       setCameraError("");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       cameraStreamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -581,8 +623,10 @@ export default function Home() {
           ? `${error.message}. Camera permission was denied or unavailable. Upload a progress photo instead.`
           : "Camera permission was denied or unavailable. Upload a progress photo instead."
       );
+    } finally {
+      setCameraPending(false);
     }
-  }, [analysis, cameraEnabled, stopCamera]);
+  }, [analysis, cameraEnabled, cameraPending, stopCamera]);
 
   const captureCameraFrame = useCallback(async (): Promise<File | null> => {
     const video = videoRef.current;
@@ -704,6 +748,7 @@ export default function Home() {
       peerConnectionRef.current = null;
       micStreamRef.current?.getTracks().forEach((track) => track.stop());
       micStreamRef.current = null;
+      handledToolCallsRef.current.clear();
       if (!options?.keepCamera) stopCamera();
       setVoiceState("off");
       setVoiceAction(options?.keepCamera ? "Voice session ended. Camera kept on." : "Voice session ended.");
@@ -715,33 +760,37 @@ export default function Home() {
     async (name: RealtimeToolName, args: Record<string, unknown> = {}): Promise<RealtimeToolResult> => {
       void args;
 
-      if (!analysis || !currentStep) {
+      const activeAnalysis = analysisRef.current;
+      const activeStepIndex = currentStepIndexRef.current;
+      const activeStep = activeAnalysis?.steps[activeStepIndex];
+
+      if (!activeAnalysis || !activeStep) {
         return { ok: false, message: "Upload a manual or try the sample PDF before using voice tools." };
       }
 
       if (name === "get_current_step") {
         return {
           ok: true,
-          message: `Step ${currentStepIndex + 1} of ${analysis.steps.length}: ${currentStep.title}. ${currentStep.instruction}`,
-          step: currentStep
+          message: `Step ${activeStepIndex + 1} of ${activeAnalysis.steps.length}: ${activeStep.title}. ${activeStep.instruction}`,
+          step: activeStep
         };
       }
 
       if (name === "go_to_next_step") {
-        if (currentStepIndex >= analysis.steps.length - 1) {
+        if (activeStepIndex >= activeAnalysis.steps.length - 1) {
           return { ok: false, message: "You are already on the final step." };
         }
-        setCurrentStepIndex((index) => Math.min(index + 1, analysis.steps.length - 1));
+        setCurrentStepIndex((index) => Math.min(index + 1, activeAnalysis.steps.length - 1));
         setProgressPhoto(null);
         setVerifyResult(null);
         setVerifiedStepId(null);
         setIsZoomed(false);
         setNotice("Next step loaded by voice.");
-        return { ok: true, message: `Moved to step ${currentStepIndex + 2}.` };
+        return { ok: true, message: `Moved to step ${activeStepIndex + 2}.` };
       }
 
       if (name === "go_to_previous_step") {
-        if (currentStepIndex <= 0) {
+        if (activeStepIndex <= 0) {
           return { ok: false, message: "You are already on the first step." };
         }
         setCurrentStepIndex((index) => Math.max(index - 1, 0));
@@ -750,37 +799,37 @@ export default function Home() {
         setVerifiedStepId(null);
         setIsZoomed(false);
         setNotice("Previous step loaded by voice.");
-        return { ok: true, message: `Moved back to step ${currentStepIndex}.` };
+        return { ok: true, message: `Moved back to step ${activeStepIndex}.` };
       }
 
       if (name === "repeat_current_step") {
         return {
           ok: true,
-          message: `${currentStep.title}. ${currentStep.instruction} Check: ${currentStep.simpleCheck}`
+          message: `${activeStep.title}. ${activeStep.instruction} Check: ${activeStep.simpleCheck}`
         };
       }
 
       if (name === "mark_current_step_done") {
-        setCompletedSteps((previous) => new Set(previous).add(currentStep.id));
-        setVerifiedStepId(currentStep.id);
+        setCompletedSteps((previous) => new Set(previous).add(activeStep.id));
+        setVerifiedStepId(activeStep.id);
         setNotice("Step marked done by voice.");
-        return { ok: true, message: `${currentStep.title} marked complete.` };
+        return { ok: true, message: `${activeStep.title} marked complete.` };
       }
 
       if (name === "list_required_parts") {
-        const parts = currentStep.parts.map((part) => `${part.quantity}x ${part.name}`);
-        const hardware = currentStep.screws.map((screw) => `${screw.quantity}x ${screw.name}`);
+        const parts = activeStep.parts.map((part) => `${part.quantity}x ${part.name}`);
+        const hardware = activeStep.screws.map((screw) => `${screw.quantity}x ${screw.name}`);
         const items = [...parts, ...hardware];
         return {
           ok: true,
           message: items.length > 0 ? items.join(", ") : "No parts or hardware are listed for this step.",
-          parts: currentStep.parts,
-          hardware: currentStep.screws
+          parts: activeStep.parts,
+          hardware: activeStep.screws
         };
       }
 
       if (name === "check_current_camera_frame") {
-        if (!cameraEnabled) {
+        if (!cameraEnabledRef.current) {
           return {
             ok: false,
             message: "Turn on camera permission for a live check, or upload a progress photo instead."
@@ -791,7 +840,7 @@ export default function Home() {
           return { ok: false, message: "Camera frame could not be captured. Upload a progress photo instead." };
         }
         await checkCurrentStep(capturedFile);
-        return { ok: true, message: `Captured camera frame and checked ${currentStep.title}.` };
+        return { ok: true, message: `Captured camera frame and checked ${activeStep.title}.` };
       }
 
       if (name === "stop_voice_agent") {
@@ -801,7 +850,7 @@ export default function Home() {
 
       return { ok: false, message: `Unsupported voice tool: ${name}` };
     },
-    [analysis, cameraEnabled, captureCameraFrame, checkCurrentStep, currentStep, currentStepIndex, stopVoiceAgent]
+    [captureCameraFrame, checkCurrentStep, stopVoiceAgent]
   );
 
   const handleRealtimeEvent = useCallback(
@@ -837,6 +886,9 @@ export default function Home() {
         (type === "response.function_call_arguments.done" || type === "response.output_item.done") &&
         REALTIME_TOOLS.some((tool) => tool.name === toolName)
       ) {
+        const toolCallKey = callId || `${type}:${toolName}:${JSON.stringify(args)}`;
+        if (handledToolCallsRef.current.has(toolCallKey)) return;
+        handledToolCallsRef.current.add(toolCallKey);
         void (async () => {
           setVoiceAction(`Running ${toolName.replaceAll("_", " ")}.`);
           const result = await handleRealtimeToolCall(toolName as RealtimeToolName, args);
@@ -876,14 +928,14 @@ export default function Home() {
     setAgentTranscript("");
 
     try {
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = micStream;
+
       const sessionResponse = await fetch("/api/realtime/session", { method: "POST" });
       const session = (await sessionResponse.json().catch(() => ({}))) as RealtimeSessionResponse;
       if (!sessionResponse.ok) throw new Error(session.error || "Realtime session failed.");
       const clientSecret = getRealtimeClientSecret(session);
       if (!clientSecret) throw new Error("Realtime session did not return a client secret.");
-
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = micStream;
 
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
@@ -896,6 +948,7 @@ export default function Home() {
       };
       peerConnection.onconnectionstatechange = () => {
         if (peerConnection.connectionState === "failed" || peerConnection.connectionState === "disconnected") {
+          stopVoiceAgent({ keepCamera: true });
           setVoiceState("error");
           setVoiceAction("Realtime voice connection dropped.");
         }
@@ -931,6 +984,7 @@ export default function Home() {
         handleRealtimeEvent(payload);
       };
       dataChannel.onerror = () => {
+        stopVoiceAgent({ keepCamera: true });
         setVoiceState("error");
         setVoiceAction("Realtime voice data channel failed.");
       };
@@ -952,16 +1006,11 @@ export default function Home() {
       const answer = await realtimeResponse.text();
       await peerConnection.setRemoteDescription({ type: "answer", sdp: answer });
     } catch (error) {
-      dataChannelRef.current?.close();
-      dataChannelRef.current = null;
-      peerConnectionRef.current?.close();
-      peerConnectionRef.current = null;
-      micStreamRef.current?.getTracks().forEach((track) => track.stop());
-      micStreamRef.current = null;
+      stopVoiceAgent({ keepCamera: true });
       setVoiceState("error");
       setVoiceAction(error instanceof Error ? error.message : "Realtime voice failed.");
     }
-  }, [analysis, handleRealtimeEvent]);
+  }, [analysis, handleRealtimeEvent, stopVoiceAgent]);
 
   const toggleMute = useCallback(() => {
     const stream = micStreamRef.current;
@@ -1373,9 +1422,9 @@ export default function Home() {
                 <strong>Live camera</strong>
                 <span>{cameraEnabled ? "Preview active" : "Use when you want hands-free checks."}</span>
               </div>
-              <button className="secondaryButton" disabled={!analysis} onClick={() => void toggleCamera()}>
+              <button className="secondaryButton" disabled={!analysis || cameraPending} onClick={() => void toggleCamera()}>
                 <Camera size={16} />
-                {cameraEnabled ? "Disable camera" : "Enable camera"}
+                {cameraPending ? "Starting camera" : cameraEnabled ? "Disable camera" : "Enable camera"}
               </button>
             </div>
             {cameraEnabled ? (
