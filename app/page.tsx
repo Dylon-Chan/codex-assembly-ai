@@ -195,6 +195,7 @@ export default function Home() {
   const analysisRunIdRef = useRef(0);
   const verifyRunIdRef = useRef(0);
   const voiceRunIdRef = useRef(0);
+  const cameraRunIdRef = useRef(0);
   const motionRunIdsRef = useRef<Record<string, number>>({});
   const motionPollInFlightRef = useRef<Set<string>>(new Set());
   const motionsRef = useRef<Record<string, MotionState>>({});
@@ -539,6 +540,7 @@ export default function Home() {
     micStreamRef.current = null;
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current = null;
+    cameraRunIdRef.current += 1;
     if (videoRef.current) videoRef.current.srcObject = null;
     runIdRef.current += 1;
     retryRunIdRef.current += 1;
@@ -581,6 +583,7 @@ export default function Home() {
   const stopCamera = useCallback(() => {
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current = null;
+    cameraRunIdRef.current += 1;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraEnabled(false);
     setCameraPending(false);
@@ -606,9 +609,15 @@ export default function Home() {
     }
 
     try {
+      const cameraRunId = cameraRunIdRef.current + 1;
+      cameraRunIdRef.current = cameraRunId;
       setCameraPending(true);
       setCameraError("");
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (cameraRunIdRef.current !== cameraRunId) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       cameraStreamRef.current = stream;
       if (videoRef.current) {
