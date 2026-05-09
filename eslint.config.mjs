@@ -5,10 +5,12 @@ const compat = new FlatCompat({
   baseDirectory: import.meta.dirname
 });
 
-export default [
+const eslintConfig = [
   js.configs.recommended,
   ...compat.extends("next/core-web-vitals"),
   {
     ignores: [".next/**", "node_modules/**", "dist/**", "out/**"]
   }
 ];
+
+export default eslintConfig;
