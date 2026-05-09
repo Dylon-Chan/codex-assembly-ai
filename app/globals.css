@@ -632,9 +632,13 @@ button:disabled {
   margin-top: 3px;
 }
 
+.motionStage {
+  flex: 1;
+  min-width: 220px;
+}
+
 .motionTrack {
   position: relative;
-  flex: 1;
   height: 42px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -660,6 +664,66 @@ button:disabled {
 .motionTrack span:nth-child(3) {
   animation-delay: 440ms;
   background: var(--amber);
+}
+
+.motionProgressState {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(140px, 220px) 42px;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(61, 216, 255, 0.055);
+}
+
+.motionProgressState span,
+.motionProgressState small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.motionProgressState small {
+  text-align: right;
+}
+
+.motionProgress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.motionProgress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cyan), var(--mint));
+  transition: width 220ms ease;
+}
+
+.motionStage video {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgba(110, 245, 178, 0.32);
+  border-radius: var(--radius);
+  object-fit: contain;
+  background: #02060a;
+}
+
+.motionMessage {
+  margin: 0;
+  min-height: 42px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 191, 102, 0.34);
+  border-radius: var(--radius);
+  color: var(--amber);
+  background: rgba(255, 191, 102, 0.07);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .partsGrid {
@@ -917,6 +981,18 @@ button:disabled {
   .workspaceHeader,
   .motionPreview {
     display: grid;
+  }
+
+  .motionStage {
+    min-width: 0;
+  }
+
+  .motionProgressState {
+    grid-template-columns: 1fr;
+  }
+
+  .motionProgressState small {
+    text-align: left;
   }
 
   .headerPills {
