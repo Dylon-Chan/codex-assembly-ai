@@ -17,6 +17,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Square,
   Upload,
   Wrench,
   ZoomIn
@@ -53,7 +54,108 @@ type MotionResponse = MotionState & {
   error?: string;
 };
 
+type RealtimeSessionResponse = {
+  model?: string;
+  client_secret?: string | { value?: string };
+  error?: string;
+};
+
+type RealtimeToolName =
+  | "get_current_step"
+  | "go_to_next_step"
+  | "go_to_previous_step"
+  | "repeat_current_step"
+  | "mark_current_step_done"
+  | "list_required_parts"
+  | "check_current_camera_frame"
+  | "stop_voice_agent";
+
+type RealtimeToolResult = {
+  ok: boolean;
+  message: string;
+  [key: string]: unknown;
+};
+
 const ACTIVE_MOTION_STATUSES = new Set<MotionState["status"]>(["creating", "queued", "in_progress"]);
+const REALTIME_MODEL_FALLBACK = "gpt-realtime-2";
+const REALTIME_TOOLS: Array<{
+  type: "function";
+  name: RealtimeToolName;
+  description: string;
+  parameters: {
+    type: "object";
+    properties: Record<string, never>;
+    additionalProperties: false;
+  };
+}> = [
+  {
+    type: "function",
+    name: "get_current_step",
+    description: "Read the current assembly step, instruction, parts, hardware, and safety cautions.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    type: "function",
+    name: "go_to_next_step",
+    description: "Advance the guide to the next assembly step when available.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    type: "function",
+    name: "go_to_previous_step",
+    description: "Move the guide back to the previous assembly step when available.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    type: "function",
+    name: "repeat_current_step",
+    description: "Repeat the current assembly instruction and simple check.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    type: "function",
+    name: "mark_current_step_done",
+    description: "Mark the current step as complete after the user confirms it is done.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    type: "function",
+    name: "list_required_parts",
+    description: "List the parts and hardware required for the current step.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    type: "function",
+    name: "check_current_camera_frame",
+    description: "Capture the live camera frame and run the same AI verification used for uploaded progress photos.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    type: "function",
+    name: "stop_voice_agent",
+    description: "End the realtime voice assistant session.",
+    parameters: { type: "object", properties: {}, additionalProperties: false }
+  }
+];
+
+function getRealtimeClientSecret(payload: RealtimeSessionResponse): string | null {
+  if (typeof payload.client_secret === "string") return payload.client_secret;
+  if (payload.client_secret && typeof payload.client_secret.value === "string") return payload.client_secret.value;
+  return null;
+}
+
+function parseRealtimeArgs(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
 
 export default function Home() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -71,7 +173,18 @@ export default function Home() {
   const [visuals, setVisuals] = useState<Record<string, StepVisualState>>({});
   const [motions, setMotions] = useState<Record<string, MotionState>>({});
   const [voiceState, setVoiceState] = useState<VoiceState>("off");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [agentTranscript, setAgentTranscript] = useState("");
+  const [voiceAction, setVoiceAction] = useState("Voice mode unlocks after analysis");
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraError, setCameraError] = useState("");
   const [verifiedStepId, setVerifiedStepId] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const runIdRef = useRef(0);
   const retryRunIdRef = useRef(0);
   const analysisRunIdRef = useRef(0);
@@ -94,6 +207,7 @@ export default function Home() {
         verifyResult &&
         (verifyResult.status === "pass" || verifyResult.score >= 0.72)
     );
+  const voiceActive = voiceState === "connecting" || voiceState === "listening" || voiceState === "speaking" || voiceState === "muted";
 
   const stepCount = analysis?.steps.length ?? 0;
   const completedCount = completedSteps.size;
@@ -424,6 +538,88 @@ export default function Home() {
     setNotice(file ? "Progress photo attached. Run AI check when ready." : "Progress photo cleared.");
   }, []);
 
+  const stopCamera = useCallback(() => {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraEnabled(false);
+  }, []);
+
+  const toggleCamera = useCallback(async () => {
+    if (cameraEnabled) {
+      stopCamera();
+      setCameraError("");
+      setVoiceAction("Camera stopped.");
+      return;
+    }
+
+    if (!analysis) {
+      setCameraError("Build a guide before starting the camera. You can upload a progress photo instead.");
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Camera access is unavailable in this browser. Upload a progress photo instead.");
+      return;
+    }
+
+    try {
+      setCameraError("");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => undefined);
+      }
+      setCameraEnabled(true);
+      setVoiceAction("Live camera ready for hands-free checks.");
+    } catch (error) {
+      cameraStreamRef.current = null;
+      setCameraEnabled(false);
+      setCameraError(
+        error instanceof Error
+          ? `${error.message}. Camera permission was denied or unavailable. Upload a progress photo instead.`
+          : "Camera permission was denied or unavailable. Upload a progress photo instead."
+      );
+    }
+  }, [analysis, cameraEnabled, stopCamera]);
+
+  const captureCameraFrame = useCallback(async (): Promise<File | null> => {
+    const video = videoRef.current;
+    if (!video || !cameraEnabled) {
+      setCameraError("Turn on the live camera or upload a progress photo.");
+      return null;
+    }
+
+    const width = video.videoWidth || video.clientWidth;
+    const height = video.videoHeight || video.clientHeight;
+    if (!width || !height) {
+      setCameraError("Camera preview is still warming up. Try again in a moment.");
+      return null;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setCameraError("Camera capture is unavailable. Upload a progress photo instead.");
+      return null;
+    }
+    context.drawImage(video, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    if (!blob) {
+      setCameraError("Camera capture failed. Upload a progress photo instead.");
+      return null;
+    }
+
+    const capturedFile = new File([blob], "camera-frame.jpg", { type: "image/jpeg" });
+    setProgressPhoto(capturedFile);
+    setCameraError("");
+    return capturedFile;
+  }, [cameraEnabled]);
+
   const checkCurrentStep = useCallback(
     async (photoOverride?: File | null) => {
       if (!currentStep) return;
@@ -493,6 +689,305 @@ export default function Home() {
     setNotice("Step loaded.");
   }, []);
 
+  const sendRealtimeEvent = useCallback((event: Record<string, unknown>) => {
+    const channel = dataChannelRef.current;
+    if (channel?.readyState === "open") {
+      channel.send(JSON.stringify(event));
+    }
+  }, []);
+
+  const stopVoiceAgent = useCallback(
+    (options?: { keepCamera?: boolean }) => {
+      dataChannelRef.current?.close();
+      dataChannelRef.current = null;
+      peerConnectionRef.current?.close();
+      peerConnectionRef.current = null;
+      micStreamRef.current?.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+      if (!options?.keepCamera) stopCamera();
+      setVoiceState("off");
+      setVoiceAction(options?.keepCamera ? "Voice session ended. Camera kept on." : "Voice session ended.");
+    },
+    [stopCamera]
+  );
+
+  const handleRealtimeToolCall = useCallback(
+    async (name: RealtimeToolName, args: Record<string, unknown> = {}): Promise<RealtimeToolResult> => {
+      void args;
+
+      if (!analysis || !currentStep) {
+        return { ok: false, message: "Upload a manual or try the sample PDF before using voice tools." };
+      }
+
+      if (name === "get_current_step") {
+        return {
+          ok: true,
+          message: `Step ${currentStepIndex + 1} of ${analysis.steps.length}: ${currentStep.title}. ${currentStep.instruction}`,
+          step: currentStep
+        };
+      }
+
+      if (name === "go_to_next_step") {
+        if (currentStepIndex >= analysis.steps.length - 1) {
+          return { ok: false, message: "You are already on the final step." };
+        }
+        setCurrentStepIndex((index) => Math.min(index + 1, analysis.steps.length - 1));
+        setProgressPhoto(null);
+        setVerifyResult(null);
+        setVerifiedStepId(null);
+        setIsZoomed(false);
+        setNotice("Next step loaded by voice.");
+        return { ok: true, message: `Moved to step ${currentStepIndex + 2}.` };
+      }
+
+      if (name === "go_to_previous_step") {
+        if (currentStepIndex <= 0) {
+          return { ok: false, message: "You are already on the first step." };
+        }
+        setCurrentStepIndex((index) => Math.max(index - 1, 0));
+        setProgressPhoto(null);
+        setVerifyResult(null);
+        setVerifiedStepId(null);
+        setIsZoomed(false);
+        setNotice("Previous step loaded by voice.");
+        return { ok: true, message: `Moved back to step ${currentStepIndex}.` };
+      }
+
+      if (name === "repeat_current_step") {
+        return {
+          ok: true,
+          message: `${currentStep.title}. ${currentStep.instruction} Check: ${currentStep.simpleCheck}`
+        };
+      }
+
+      if (name === "mark_current_step_done") {
+        setCompletedSteps((previous) => new Set(previous).add(currentStep.id));
+        setVerifiedStepId(currentStep.id);
+        setNotice("Step marked done by voice.");
+        return { ok: true, message: `${currentStep.title} marked complete.` };
+      }
+
+      if (name === "list_required_parts") {
+        const parts = currentStep.parts.map((part) => `${part.quantity}x ${part.name}`);
+        const hardware = currentStep.screws.map((screw) => `${screw.quantity}x ${screw.name}`);
+        const items = [...parts, ...hardware];
+        return {
+          ok: true,
+          message: items.length > 0 ? items.join(", ") : "No parts or hardware are listed for this step.",
+          parts: currentStep.parts,
+          hardware: currentStep.screws
+        };
+      }
+
+      if (name === "check_current_camera_frame") {
+        if (!cameraEnabled) {
+          return {
+            ok: false,
+            message: "Turn on camera permission for a live check, or upload a progress photo instead."
+          };
+        }
+        const capturedFile = await captureCameraFrame();
+        if (!capturedFile) {
+          return { ok: false, message: "Camera frame could not be captured. Upload a progress photo instead." };
+        }
+        await checkCurrentStep(capturedFile);
+        return { ok: true, message: `Captured camera frame and checked ${currentStep.title}.` };
+      }
+
+      if (name === "stop_voice_agent") {
+        stopVoiceAgent({ keepCamera: true });
+        return { ok: true, message: "Voice session stopped." };
+      }
+
+      return { ok: false, message: `Unsupported voice tool: ${name}` };
+    },
+    [analysis, cameraEnabled, captureCameraFrame, checkCurrentStep, currentStep, currentStepIndex, stopVoiceAgent]
+  );
+
+  const handleRealtimeEvent = useCallback(
+    (event: Record<string, unknown>) => {
+      const type = typeof event.type === "string" ? event.type : "";
+
+      if (type.includes("input_audio") && typeof event.transcript === "string") {
+        setVoiceTranscript(event.transcript);
+      }
+      if ((type.includes("audio_transcript") || type.includes("output_text")) && typeof event.delta === "string") {
+        setVoiceState("speaking");
+        setAgentTranscript((text) => `${text}${event.delta}`);
+      }
+      if ((type.includes("audio_transcript") || type.includes("output_text")) && typeof event.transcript === "string") {
+        setVoiceState("speaking");
+        setAgentTranscript(event.transcript);
+      }
+      if (type === "response.done") {
+        setVoiceState((state) => (state === "muted" ? "muted" : "listening"));
+      }
+
+      const maybeItem = event.item && typeof event.item === "object" ? (event.item as Record<string, unknown>) : event;
+      const toolName = typeof maybeItem.name === "string" ? maybeItem.name : "";
+      const callId =
+        typeof maybeItem.call_id === "string"
+          ? maybeItem.call_id
+          : typeof event.call_id === "string"
+            ? event.call_id
+            : "";
+      const args = parseRealtimeArgs(maybeItem.arguments ?? event.arguments);
+
+      if (
+        (type === "response.function_call_arguments.done" || type === "response.output_item.done") &&
+        REALTIME_TOOLS.some((tool) => tool.name === toolName)
+      ) {
+        void (async () => {
+          setVoiceAction(`Running ${toolName.replaceAll("_", " ")}.`);
+          const result = await handleRealtimeToolCall(toolName as RealtimeToolName, args);
+          setVoiceAction(result.message);
+          if (callId) {
+            sendRealtimeEvent({
+              type: "conversation.item.create",
+              item: {
+                type: "function_call_output",
+                call_id: callId,
+                output: JSON.stringify(result)
+              }
+            });
+            sendRealtimeEvent({ type: "response.create" });
+          }
+        })();
+      }
+    },
+    [handleRealtimeToolCall, sendRealtimeEvent]
+  );
+
+  const startVoiceAgent = useCallback(async () => {
+    if (!analysis) {
+      setVoiceState("off");
+      setVoiceAction("Voice mode unlocks after analysis. Upload a manual or try the sample PDF.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceState("error");
+      setVoiceAction("Microphone access is unavailable in this browser.");
+      return;
+    }
+
+    setVoiceState("connecting");
+    setVoiceAction("Connecting realtime voice.");
+    setVoiceTranscript("");
+    setAgentTranscript("");
+
+    try {
+      const sessionResponse = await fetch("/api/realtime/session", { method: "POST" });
+      const session = (await sessionResponse.json().catch(() => ({}))) as RealtimeSessionResponse;
+      if (!sessionResponse.ok) throw new Error(session.error || "Realtime session failed.");
+      const clientSecret = getRealtimeClientSecret(session);
+      if (!clientSecret) throw new Error("Realtime session did not return a client secret.");
+
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = micStream;
+
+      const peerConnection = new RTCPeerConnection();
+      peerConnectionRef.current = peerConnection;
+      micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
+      peerConnection.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (remoteAudioRef.current && remoteStream) {
+          remoteAudioRef.current.srcObject = remoteStream;
+        }
+      };
+      peerConnection.onconnectionstatechange = () => {
+        if (peerConnection.connectionState === "failed" || peerConnection.connectionState === "disconnected") {
+          setVoiceState("error");
+          setVoiceAction("Realtime voice connection dropped.");
+        }
+      };
+
+      const dataChannel = peerConnection.createDataChannel("oai-events");
+      dataChannelRef.current = dataChannel;
+      dataChannel.onopen = () => {
+        setVoiceState("listening");
+        setVoiceAction("Listening. Ask for the next instruction, parts, or a camera check.");
+        dataChannel.send(
+          JSON.stringify({
+            type: "session.update",
+            session: {
+              modalities: ["text", "audio"],
+              input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+              tools: REALTIME_TOOLS,
+              tool_choice: "auto"
+            }
+          })
+        );
+        dataChannel.send(
+          JSON.stringify({
+            type: "response.create",
+            response: {
+              instructions: "Greet the user briefly and offer hands-free help with the current assembly step."
+            }
+          })
+        );
+      };
+      dataChannel.onmessage = (event) => {
+        const payload = JSON.parse(String(event.data)) as Record<string, unknown>;
+        handleRealtimeEvent(payload);
+      };
+      dataChannel.onerror = () => {
+        setVoiceState("error");
+        setVoiceAction("Realtime voice data channel failed.");
+      };
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      const realtimeResponse = await fetch(
+        `https://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model || REALTIME_MODEL_FALLBACK)}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${clientSecret}`,
+            "Content-Type": "application/sdp"
+          },
+          body: offer.sdp
+        }
+      );
+      if (!realtimeResponse.ok) throw new Error("OpenAI Realtime SDP exchange failed.");
+      const answer = await realtimeResponse.text();
+      await peerConnection.setRemoteDescription({ type: "answer", sdp: answer });
+    } catch (error) {
+      dataChannelRef.current?.close();
+      dataChannelRef.current = null;
+      peerConnectionRef.current?.close();
+      peerConnectionRef.current = null;
+      micStreamRef.current?.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+      setVoiceState("error");
+      setVoiceAction(error instanceof Error ? error.message : "Realtime voice failed.");
+    }
+  }, [analysis, handleRealtimeEvent]);
+
+  const toggleMute = useCallback(() => {
+    const stream = micStreamRef.current;
+    if (!stream) return;
+    const shouldMute = voiceState !== "muted";
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = !shouldMute;
+    });
+    setVoiceState(shouldMute ? "muted" : "listening");
+    setVoiceAction(shouldMute ? "Microphone muted." : "Microphone live.");
+  }, [voiceState]);
+
+  const checkCameraFrame = useCallback(async () => {
+    const capturedFile = await captureCameraFrame();
+    if (capturedFile) await checkCurrentStep(capturedFile);
+  }, [captureCameraFrame, checkCurrentStep]);
+
+  useEffect(() => {
+    return () => {
+      micStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      peerConnectionRef.current?.close();
+      dataChannelRef.current?.close();
+    };
+  }, []);
+
   return (
     <main className="appShell">
       <header className="topBar">
@@ -510,6 +1005,33 @@ export default function Home() {
           <button>Parts</button>
           <button>Checks</button>
         </nav>
+        <div className={`voiceCluster ${voiceState} ${analysis ? "" : "disabled"}`} aria-label="Voice controls">
+          <div className="voiceStatus">
+            <span className="voicePulse" />
+            <Mic size={15} />
+            <strong>{analysis ? `Voice ${voiceState}` : "Voice mode unlocks after analysis"}</strong>
+          </div>
+          <div className="voiceButtons">
+            <button
+              className="secondaryButton"
+              disabled={!analysis || voiceState === "connecting"}
+              onClick={() => (voiceActive ? stopVoiceAgent({ keepCamera: true }) : void startVoiceAgent())}
+            >
+              {voiceActive ? <MicOff size={15} /> : <Mic size={15} />}
+              {voiceActive ? "Disable voice" : "Enable voice"}
+            </button>
+            {voiceActive ? (
+              <>
+                <button className="iconButton" title={voiceState === "muted" ? "Unmute microphone" : "Mute microphone"} onClick={toggleMute}>
+                  {voiceState === "muted" ? <Mic size={15} /> : <MicOff size={15} />}
+                </button>
+                <button className="iconButton" title="End voice session and camera" onClick={() => stopVoiceAgent()}>
+                  <Square size={14} />
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
         <div className="statusCluster">
           <span className="statusChip">
             {analysis ? `AI extraction ${Math.round(analysis.confidence * 100)}%` : "Ready for manual"}
@@ -517,6 +1039,18 @@ export default function Home() {
           <span className="noticeText">{notice}</span>
         </div>
       </header>
+      <audio ref={remoteAudioRef} autoPlay />
+      <section className={`voiceStrip ${voiceState}`} aria-label="Voice transcript">
+        <span>{voiceAction}</span>
+        <p>
+          <strong>User</strong>
+          {voiceTranscript || "No speech yet"}
+        </p>
+        <p>
+          <strong>Agent</strong>
+          {agentTranscript || (analysis ? "Ready for voice guidance" : "Voice mode unlocks after analysis")}
+        </p>
+      </section>
 
       <section className="workspace">
         <aside className="panel inputPanel" aria-label="Manual inputs">
@@ -833,6 +1367,28 @@ export default function Home() {
             />
           </label>
 
+          <div className={`cameraBox ${cameraEnabled ? "enabled" : ""}`}>
+            <div className="cameraHeader">
+              <div>
+                <strong>Live camera</strong>
+                <span>{cameraEnabled ? "Preview active" : "Use when you want hands-free checks."}</span>
+              </div>
+              <button className="secondaryButton" disabled={!analysis} onClick={() => void toggleCamera()}>
+                <Camera size={16} />
+                {cameraEnabled ? "Disable camera" : "Enable camera"}
+              </button>
+            </div>
+            {cameraEnabled ? (
+              <video ref={videoRef} autoPlay muted playsInline />
+            ) : (
+              <div className="cameraPlaceholder">
+                <Camera size={24} />
+                <span>Camera preview appears here.</span>
+              </div>
+            )}
+            {cameraError ? <p className="cameraError">{cameraError}</p> : null}
+          </div>
+
           <div className="checkActions">
             <button className="primaryButton" disabled={!analysis || !progressPhoto || isChecking} onClick={() => void checkCurrentStep()}>
               {isChecking ? <Loader2 className="spinIcon" size={16} /> : <ClipboardCheck size={16} />}
@@ -840,11 +1396,11 @@ export default function Home() {
             </button>
             <button
               className="secondaryButton"
-              disabled={!analysis}
-              onClick={() => setVoiceState((state) => (state === "off" ? "listening" : "off"))}
+              disabled={!analysis || !cameraEnabled || isChecking}
+              onClick={() => void checkCameraFrame()}
             >
-              {voiceState === "off" ? <Mic size={16} /> : <MicOff size={16} />}
-              Voice {voiceState}
+              {isChecking ? <Loader2 className="spinIcon" size={16} /> : <Camera size={16} />}
+              Check camera frame
             </button>
           </div>
 

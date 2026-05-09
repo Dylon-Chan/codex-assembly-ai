@@ -68,3 +68,47 @@ test("progress photo and check flow use verify pipeline", () => {
   assert.match(source, /score >= 0\.72/);
   assert.match(source, /AI found something to fix before continuing\./);
 });
+
+test("voice mode has explicit states and stays disabled before analysis", () => {
+  const source = page();
+  assert.match(source, /VoiceState/);
+  assert.match(source, /voiceState/);
+  assert.match(source, /connecting/);
+  assert.match(source, /listening/);
+  assert.match(source, /speaking/);
+  assert.match(source, /muted/);
+  assert.match(source, /Voice mode unlocks after analysis/);
+});
+
+test("live camera can enable disable and attach to video element", () => {
+  const source = page();
+  assert.match(source, /getUserMedia\(\{ video: true \}\)/);
+  assert.match(source, /stopCamera/);
+  assert.match(source, /videoRef/);
+});
+
+test("realtime voice tool handler names are registered", () => {
+  const source = page();
+  [
+    "get_current_step",
+    "go_to_next_step",
+    "go_to_previous_step",
+    "repeat_current_step",
+    "mark_current_step_done",
+    "list_required_parts",
+    "check_current_camera_frame",
+    "stop_voice_agent"
+  ].forEach((toolName) => assert.match(source, new RegExp(toolName)));
+});
+
+test("camera frame checks use same verification pipeline as uploaded photos", () => {
+  const source = page();
+  assert.match(source, /captureCameraFrame/);
+  assert.match(source, /checkCurrentStep\(capturedFile\)/);
+});
+
+test("voice cleanup stops media tracks and closes realtime connection", () => {
+  const source = page();
+  assert.match(source, /getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
+  assert.match(source, /peerConnectionRef\.current\?\.close\(\)/);
+});

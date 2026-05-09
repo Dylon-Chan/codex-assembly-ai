@@ -55,7 +55,7 @@ button {
 
 .topBar {
   display: grid;
-  grid-template-columns: 260px auto minmax(280px, 1fr);
+  grid-template-columns: 220px auto minmax(260px, 380px) minmax(280px, 1fr);
   gap: 16px;
   align-items: center;
   min-height: 66px;
@@ -167,6 +167,116 @@ button {
   justify-content: end;
   gap: 10px;
   min-width: 0;
+}
+
+.voiceCluster {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.voiceCluster.disabled {
+  opacity: 0.72;
+}
+
+.voiceStatus,
+.voiceButtons,
+.cameraHeader {
+  display: flex;
+  align-items: center;
+}
+
+.voiceStatus {
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.voiceStatus strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voiceStatus svg {
+  color: var(--cyan);
+}
+
+.voicePulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.voiceCluster.connecting .voicePulse,
+.voiceCluster.listening .voicePulse,
+.voiceCluster.speaking .voicePulse {
+  background: var(--mint);
+  animation: voicePulse 1.35s ease-in-out infinite;
+}
+
+.voiceCluster.muted .voicePulse {
+  background: var(--amber);
+}
+
+.voiceCluster.error .voicePulse {
+  background: var(--danger);
+}
+
+.voiceButtons {
+  gap: 7px;
+}
+
+.voiceButtons .secondaryButton {
+  flex: 1;
+  min-width: 150px;
+  min-height: 34px;
+}
+
+.voiceButtons .iconButton {
+  width: 34px;
+  height: 34px;
+}
+
+.voiceStrip {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.voiceStrip > span,
+.voiceStrip p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.voiceStrip > span {
+  color: var(--mint);
+  font-weight: 800;
+}
+
+.voiceStrip strong {
+  margin-right: 7px;
+  color: var(--text);
+}
+
+audio {
+  display: none;
 }
 
 .statusChip,
@@ -817,6 +927,80 @@ button:disabled {
   min-height: 92px;
 }
 
+.cameraBox {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.032);
+}
+
+.cameraBox.enabled {
+  border-color: rgba(110, 245, 178, 0.36);
+}
+
+.cameraHeader {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cameraHeader strong,
+.cameraHeader span {
+  display: block;
+}
+
+.cameraHeader strong {
+  font-size: 13px;
+}
+
+.cameraHeader span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cameraHeader .secondaryButton {
+  flex: 0 0 auto;
+  min-height: 34px;
+}
+
+.cameraBox video,
+.cameraPlaceholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #02060a;
+}
+
+.cameraBox video {
+  display: block;
+  object-fit: cover;
+}
+
+.cameraPlaceholder {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cameraPlaceholder svg {
+  color: var(--cyan);
+}
+
+.cameraError {
+  margin: 0;
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .checkActions {
   display: grid;
   grid-template-columns: 1fr;
@@ -921,6 +1105,18 @@ button:disabled {
   }
 }
 
+@keyframes voicePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(110, 245, 178, 0.34);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(110, 245, 178, 0);
+    transform: scale(1.12);
+  }
+}
+
 @keyframes motionPreview {
   0% {
     left: -24px;
@@ -952,6 +1148,10 @@ button:disabled {
   .statusCluster {
     justify-content: start;
   }
+
+  .voiceStrip {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 860px) {
@@ -974,8 +1174,20 @@ button:disabled {
 
   .actionRow,
   .checkActions,
-  .stepControls {
+  .stepControls,
+  .voiceButtons,
+  .cameraHeader {
     grid-template-columns: 1fr;
+  }
+
+  .voiceButtons,
+  .cameraHeader {
+    display: grid;
+  }
+
+  .voiceButtons .secondaryButton,
+  .cameraHeader .secondaryButton {
+    width: 100%;
   }
 
   .workspaceHeader,
