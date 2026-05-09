@@ -57,6 +57,7 @@ type MotionResponse = MotionState & {
 
 type RealtimeSessionResponse = {
   model?: string;
+  value?: string;
   client_secret?: string | { value?: string };
   error?: string;
 };
@@ -78,7 +79,6 @@ type RealtimeToolResult = {
 };
 
 const ACTIVE_MOTION_STATUSES = new Set<MotionState["status"]>(["creating", "queued", "in_progress"]);
-const REALTIME_MODEL_FALLBACK = "gpt-realtime-2";
 const REALTIME_TOOLS: Array<{
   type: "function";
   name: RealtimeToolName;
@@ -142,6 +142,7 @@ const REALTIME_TOOLS: Array<{
 function getRealtimeClientSecret(payload: RealtimeSessionResponse): string | null {
   if (typeof payload.client_secret === "string") return payload.client_secret;
   if (payload.client_secret && typeof payload.client_secret.value === "string") return payload.client_secret.value;
+  if (typeof payload.value === "string") return payload.value;
   return null;
 }
 
@@ -158,6 +159,44 @@ function parseRealtimeArgs(value: unknown): Record<string, unknown> {
   return typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function buildRealtimeStepInstructions(analysis: AnalysisResult, stepIndex: number): string {
+  const step = analysis.steps[stepIndex];
+  if (!step) {
+    return "The guide is loaded but no step is selected. Ask the user to pick a step.";
+  }
+
+  const parts = step.parts.map((p) => `${p.quantity}x ${p.name}`).join(", ") || "none";
+  const hardware = step.screws.map((s) => `${s.quantity}x ${s.name}`).join(", ") || "none";
+  const cautions = step.cautions.join("; ") || "none";
+
+  return [
+    "You are Aria, a hands-free assembly assistant inside AssembleAI. Be concise and safety-conscious.",
+    "",
+    "Active guide context is provided below. Guide-grounded answers must use this state.",
+    `ACTIVE STEP: ${stepIndex + 1} of ${analysis.steps.length} — ${step.title}`,
+    `Instruction: ${step.instruction}`,
+    `Check: ${step.simpleCheck}`,
+    `Parts: ${parts}`,
+    `Hardware: ${hardware}`,
+    `Cautions: ${cautions}`,
+    "",
+    "TOOL RULES — apply exactly, no exceptions:",
+    "• User says next / proceed / continue / move on / step 2 → call go_to_next_step. Then read the new step title and instruction from the tool result.",
+    "• User says back / previous / go back → call go_to_previous_step. Then read the new step title and instruction from the tool result.",
+    "• User asks what the current step is, what to do, or about parts → call get_current_step.",
+    "• For any question about the first step, current step, next instruction, required parts, or the manual guide, call get_current_step before answering.",
+    "• User says they finished or are done → call mark_current_step_done.",
+    "• User asks for a camera or photo check → call check_current_camera_frame.",
+    "• User asks to stop or end the session → call stop_voice_agent.",
+    "",
+    "ABSOLUTE RULES:",
+    "• NEVER ask the user to send, paste, or share guide context. All guide data comes from the tools above.",
+    "• Do not say you cannot see the manual.",
+    "• Do not speak until the user addresses you.",
+    "• Answers must be short plain sentences. No bullet points, no markdown."
+  ].join("\n");
+}
+
 export default function Home() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -165,6 +204,7 @@ export default function Home() {
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [manualFile, setManualFile] = useState<File | null>(null);
   const [productPhoto, setProductPhoto] = useState<File | null>(null);
+  const [productPhotoBase64, setProductPhotoBase64] = useState<string | null>(null);
   const [partPhotos, setPartPhotos] = useState<File[]>([]);
   const [progressPhoto, setProgressPhoto] = useState<File | null>(null);
   const [notice, setNotice] = useState(EMPTY_NOTICE);
@@ -201,6 +241,7 @@ export default function Home() {
   const motionPollInFlightRef = useRef<Set<string>>(new Set());
   const motionsRef = useRef<Record<string, MotionState>>({});
   const handledToolCallsRef = useRef<Set<string>>(new Set());
+  const productPhotoBase64Ref = useRef<string | null>(null);
 
   const currentStep = analysis?.steps[currentStepIndex];
   const currentVisual = currentStep ? visuals[currentStep.id] : undefined;
@@ -254,6 +295,10 @@ export default function Home() {
   }, [motions]);
 
   useEffect(() => {
+    productPhotoBase64Ref.current = productPhotoBase64;
+  }, [productPhotoBase64]);
+
+  useEffect(() => {
     analysisRef.current = analysis;
   }, [analysis]);
 
@@ -293,7 +338,11 @@ export default function Home() {
             const response = await fetch("/api/illustrate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ projectName: nextAnalysis.projectName, step })
+              body: JSON.stringify({
+                projectName: nextAnalysis.projectName,
+                step,
+                productPhotoBase64: productPhotoBase64Ref.current ?? undefined
+              })
             });
             const payload = (await response.json().catch(() => ({}))) as IllustrateResponse;
             if (runIdRef.current !== runId) return;
@@ -330,7 +379,11 @@ export default function Home() {
         const response = await fetch("/api/illustrate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectName, step })
+          body: JSON.stringify({
+            projectName,
+            step,
+            productPhotoBase64: productPhotoBase64Ref.current ?? undefined
+          })
         });
         const payload = (await response.json().catch(() => ({}))) as IllustrateResponse;
         if (retryRunIdRef.current !== retryRunId) return;
@@ -561,6 +614,7 @@ export default function Home() {
     setVerifiedStepId(null);
     setManualFile(null);
     setProductPhoto(null);
+    setProductPhotoBase64(null);
     setPartPhotos([]);
     setProgressPhoto(null);
     setNotice(EMPTY_NOTICE);
@@ -691,6 +745,11 @@ export default function Home() {
     verifyRunIdRef.current = verifyRunId;
     const formData = new FormData();
     formData.append("stepTitle", step.title);
+    formData.append("instruction", step.instruction);
+    formData.append("simpleCheck", step.simpleCheck);
+    formData.append("cautions", JSON.stringify(step.cautions));
+    formData.append("parts", JSON.stringify(step.parts.map((part) => ({ id: part.id, name: part.name, quantity: part.quantity }))));
+    formData.append("screws", JSON.stringify(step.screws.map((screw) => ({ id: screw.id, name: screw.name, quantity: screw.quantity }))));
     if (photo) formData.append("photo", photo);
 
     setIsChecking(true);
@@ -764,6 +823,16 @@ export default function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!voiceActive || !analysis) return;
+    sendRealtimeEvent({
+      type: "session.update",
+      session: {
+        instructions: buildRealtimeStepInstructions(analysis, currentStepIndex)
+      }
+    });
+  }, [currentStepIndex, analysis, voiceActive, sendRealtimeEvent]);
+
   const stopVoiceAgent = useCallback(
     (options?: { keepCamera?: boolean }) => {
       dataChannelRef.current?.close();
@@ -805,26 +874,38 @@ export default function Home() {
         if (activeStepIndex >= activeAnalysis.steps.length - 1) {
           return { ok: false, message: "You are already on the final step." };
         }
+        const nextIndex = activeStepIndex + 1;
+        const nextStep = activeAnalysis.steps[nextIndex];
         setCurrentStepIndex((index) => Math.min(index + 1, activeAnalysis.steps.length - 1));
         setProgressPhoto(null);
         setVerifyResult(null);
         setVerifiedStepId(null);
         setIsZoomed(false);
         setNotice("Next step loaded by voice.");
-        return { ok: true, message: `Moved to step ${activeStepIndex + 2}.` };
+        return {
+          ok: true,
+          message: `Step ${nextIndex + 1} of ${activeAnalysis.steps.length}: ${nextStep.title}. ${nextStep.instruction}`,
+          step: nextStep
+        };
       }
 
       if (name === "go_to_previous_step") {
         if (activeStepIndex <= 0) {
           return { ok: false, message: "You are already on the first step." };
         }
+        const prevIndex = activeStepIndex - 1;
+        const prevStep = activeAnalysis.steps[prevIndex];
         setCurrentStepIndex((index) => Math.max(index - 1, 0));
         setProgressPhoto(null);
         setVerifyResult(null);
         setVerifiedStepId(null);
         setIsZoomed(false);
         setNotice("Previous step loaded by voice.");
-        return { ok: true, message: `Moved back to step ${activeStepIndex}.` };
+        return {
+          ok: true,
+          message: `Step ${prevIndex + 1} of ${activeAnalysis.steps.length}: ${prevStep.title}. ${prevStep.instruction}`,
+          step: prevStep
+        };
       }
 
       if (name === "repeat_current_step") {
@@ -1011,7 +1092,8 @@ export default function Home() {
               modalities: ["text", "audio"],
               input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
               tools: REALTIME_TOOLS,
-              tool_choice: "auto"
+              tool_choice: "auto",
+              instructions: buildRealtimeStepInstructions(analysis, currentStepIndex)
             }
           })
         );
@@ -1019,7 +1101,7 @@ export default function Home() {
           JSON.stringify({
             type: "response.create",
             response: {
-              instructions: "Greet the user briefly and offer hands-free help with the current assembly step."
+              instructions: "Greet the user as Aria. In one sentence, say which step is active and offer to help. Do not read the full instruction unprompted."
             }
           })
         );
@@ -1040,17 +1122,14 @@ export default function Home() {
       if (voiceRunIdRef.current !== voiceRunId) return;
       await peerConnection.setLocalDescription(offer);
       if (voiceRunIdRef.current !== voiceRunId) return;
-      const realtimeResponse = await fetch(
-        `https://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model || REALTIME_MODEL_FALLBACK)}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${clientSecret}`,
-            "Content-Type": "application/sdp"
-          },
-          body: offer.sdp
-        }
-      );
+      const realtimeResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${clientSecret}`,
+          "Content-Type": "application/sdp"
+        },
+        body: offer.sdp
+      });
       if (voiceRunIdRef.current !== voiceRunId) return;
       if (!realtimeResponse.ok) throw new Error("OpenAI Realtime SDP exchange failed.");
       const answer = await realtimeResponse.text();
@@ -1062,7 +1141,7 @@ export default function Home() {
       setVoiceState("error");
       setVoiceAction(error instanceof Error ? error.message : "Realtime voice failed.");
     }
-  }, [analysis, handleRealtimeEvent, stopVoiceAgent]);
+  }, [analysis, currentStepIndex, handleRealtimeEvent, stopVoiceAgent]);
 
   const toggleMute = useCallback(() => {
     const stream = micStreamRef.current;
@@ -1188,7 +1267,17 @@ export default function Home() {
             <input
               accept="image/*"
               type="file"
-              onChange={(event) => setProductPhoto(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                setProductPhoto(file);
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = (e) => setProductPhotoBase64(e.target?.result as string ?? null);
+                  reader.readAsDataURL(file);
+                } else {
+                  setProductPhotoBase64(null);
+                }
+              }}
             />
           </label>
 

@@ -27,6 +27,7 @@ export type AssemblyStep = {
   parts: Part[];
   screws: Hardware[];
   cautions: string[];
+  visualDescription?: string;
 };
 
 export type AnalysisResult = {

@@ -3,6 +3,15 @@ import { callResponses, parseJsonOutput } from "./openai";
 
 type VerifyRecord = Record<string, unknown>;
 
+export type VerifyStepCriteria = {
+  stepTitle: string;
+  instruction?: string;
+  simpleCheck?: string;
+  cautions?: string[];
+  parts?: Array<{ id: string; name: string; quantity: number }>;
+  screws?: Array<{ id: string; name: string; quantity: number }>;
+};
+
 function asRecord(value: unknown): VerifyRecord {
   return typeof value === "object" && value !== null ? value as VerifyRecord : {};
 }
@@ -37,16 +46,53 @@ export function normalizeVerifyResult(value: unknown): VerifyResult {
   };
 }
 
-export async function verifyProgressPhoto(stepTitle: string, photoDataUrl?: string): Promise<VerifyResult> {
+function formatItems(items: VerifyStepCriteria["parts"]): string {
+  return items && items.length > 0
+    ? items.map((item) => `- ${item.id}: ${item.name} (qty ${item.quantity})`).join("\n")
+    : "None listed";
+}
+
+export async function verifyProgressPhoto(criteria: VerifyStepCriteria, photoDataUrl?: string): Promise<VerifyResult> {
+  const formattedParts = formatItems(criteria.parts);
+  const formattedScrews = formatItems(criteria.screws);
+  const formattedCautions = criteria.cautions?.length ? criteria.cautions.join("; ") : "None";
+
   const content: Record<string, unknown>[] = [
     {
       type: "input_text",
       text: [
-        `Check whether this progress photo satisfies the current assembly step: ${stepTitle}.`,
-        "Return only valid JSON with status pass|warning|fail, score, message, checklist, nextFix.",
-        "Use checklist as an array of visible checks. Keep score from 0 to 1.",
-        "Be safety-aware and mention specific visible alignment, fastening, orientation, or missing-photo issues."
-      ].join(" ")
+        "You are a safety-aware assembly inspector. You are given a progress photo and the full criteria for the current assembly step.",
+        "",
+        "Your job is to determine whether the visible assembly state matches the expected outcome for this step.",
+        "",
+        "Status rules:",
+        "- pass: all visible criteria are met and it is safe to continue.",
+        "- warning: the photo is inconclusive, partially correct, or the key area is obscured; not dangerous but needs attention.",
+        "- fail: a visible misalignment, missing part, wrong orientation, or safety issue is present.",
+        "",
+        "Score: 0.0-1.0 confidence that the step is physically complete and safe. A clear pass should score 0.85+. An inconclusive photo scores 0.5-0.7. A visible failure scores below 0.5.",
+        "",
+        "message: one sentence summarising what you see.",
+        "checklist: 3-5 short items describing what you checked.",
+        "nextFix: one specific, actionable sentence telling the user what to correct or do differently for the next photo.",
+        "",
+        "Return valid JSON only. No markdown, no code fences.",
+        "",
+        "Check whether this progress photo satisfies the current assembly step.",
+        "",
+        `Step title: ${criteria.stepTitle}`,
+        `Instruction: ${criteria.instruction || ""}`,
+        `Expected check: ${criteria.simpleCheck || ""}`,
+        `Cautions: ${formattedCautions}`,
+        "",
+        "Parts that should be present or placed:",
+        formattedParts,
+        "",
+        "Hardware that should be installed:",
+        formattedScrews,
+        "",
+        "Be practical. If the key area is clearly visible and correct, pass it. If the photo is too dark, blurry, or the joint is off-camera, return warning with a specific nextFix."
+      ].join("\n")
     }
   ];
 

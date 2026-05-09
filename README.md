@@ -28,7 +28,9 @@ Open [http://localhost:3000](http://localhost:3000).
 - `ANALYSIS_MODEL`: optional, defaults to `gpt-5.5`.
 - `VERIFICATION_MODEL`: optional, defaults to `gpt-5.5`.
 - `IMAGE_MODEL`: optional, defaults to `gpt-image-2`.
-- `GEMINI_API_KEY` or `GOOGLE_API_KEY`: optional, enables Veo motion video generation.
+- `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT`, and `GOOGLE_CLOUD_LOCATION`: optional, enables Veo motion video generation through Vertex AI.
+- `GEMINI_API_KEY` or `GOOGLE_API_KEY`: optional fallback for Veo motion video generation through the Gemini Developer API.
+- `VEO_MODEL`: optional, defaults to `veo-3.1-fast-generate-001`.
 
 ## First Run
 
