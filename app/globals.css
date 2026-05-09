@@ -31,3 +31,896 @@ button,
 input {
   font: inherit;
 }
+
+button {
+  border: 0;
+}
+
+.appShell {
+  min-height: 100vh;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(61, 216, 255, 0.12), transparent 26%),
+    linear-gradient(180deg, #07111c 0%, var(--bg) 62%);
+}
+
+.topBar,
+.panel,
+.subPanel {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.topBar {
+  display: grid;
+  grid-template-columns: 260px auto minmax(280px, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-height: 66px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+}
+
+.brandBlock,
+.panelTitle,
+.panelHeader,
+.statusCluster,
+.actionRow,
+.checkActions,
+.diagramToolbar,
+.headerPills,
+.flowLabels,
+.chipRow,
+.assetStatus,
+.checkLine,
+.cautionBand span,
+.motionPreview {
+  display: flex;
+  align-items: center;
+}
+
+.brandBlock {
+  gap: 10px;
+}
+
+.brandMark,
+.railMarker,
+.partRow > span,
+.screwRow > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.brandMark {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  color: #061018;
+  background: linear-gradient(135deg, var(--cyan), var(--mint));
+}
+
+.brandBlock strong,
+.panelHeader h2,
+.workspaceHeader h1,
+.subPanel h2 {
+  display: block;
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.brandBlock strong {
+  font-size: 15px;
+}
+
+.brandBlock span,
+.panelHeader p,
+.projectSummary span,
+.workspaceHeader span,
+.visualState p,
+.mutedText,
+.assetStatus,
+.partRow small,
+.screwRow small {
+  color: var(--muted);
+}
+
+.brandBlock div span,
+.panelHeader p {
+  font-size: 12px;
+}
+
+.segmentNav {
+  display: inline-flex;
+  width: max-content;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.segmentNav button,
+.iconButton,
+.primaryButton,
+.secondaryButton,
+.continueButton {
+  cursor: pointer;
+  color: var(--text);
+  border-radius: var(--radius);
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.segmentNav button {
+  padding: 8px 12px;
+  font-size: 12px;
+  background: transparent;
+}
+
+.segmentNav .active {
+  color: #061018;
+  background: var(--cyan);
+}
+
+.statusCluster {
+  justify-content: end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.statusChip,
+.noticeText,
+.riskPill,
+.visualPill,
+.scoreBadge,
+.chipRow span,
+.frameStrip span,
+.verifyResult > span,
+.flowLabels span {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+
+.statusChip {
+  padding: 7px 9px;
+  color: var(--mint);
+  background: rgba(110, 245, 178, 0.08);
+  font-size: 12px;
+}
+
+.noticeText {
+  overflow: hidden;
+  max-width: 520px;
+  padding: 7px 9px;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 310px minmax(460px, 1fr) 330px;
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.panel {
+  min-height: calc(100vh - 112px);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.inputPanel,
+.checksPanel {
+  position: sticky;
+  top: 14px;
+}
+
+.panelHeader,
+.splitHeader {
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.panelTitle {
+  gap: 10px;
+  min-width: 0;
+}
+
+.panelHeader h2 {
+  font-size: 15px;
+}
+
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.iconButton:hover,
+.secondaryButton:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: rgba(61, 216, 255, 0.09);
+}
+
+.fileDrop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 4px 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+}
+
+.fileDrop svg {
+  grid-row: span 2;
+  color: var(--cyan);
+}
+
+.fileDrop span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fileDrop strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.fileDrop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fileDrop:has(input:disabled) {
+  opacity: 0.52;
+}
+
+.fileDrop:has(input:disabled) input {
+  cursor: not-allowed;
+}
+
+.actionRow,
+.checkActions {
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.primaryButton,
+.secondaryButton,
+.continueButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.primaryButton {
+  color: #061018;
+  background: linear-gradient(135deg, var(--cyan), var(--mint));
+}
+
+.secondaryButton,
+.continueButton {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: grayscale(0.4);
+}
+
+.summaryBox {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid rgba(110, 245, 178, 0.22);
+  border-radius: var(--radius);
+  background: rgba(110, 245, 178, 0.06);
+}
+
+.summaryBox span,
+.instructionBand span,
+.motionPreview span,
+.verifyResult > span {
+  color: var(--mint);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.summaryBox p,
+.instructionBand p,
+.verifyResult p,
+.partRow p,
+.screwRow p,
+.emptyCheck p,
+.emptyState p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.stepRail {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.railStep {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.railStep.selected {
+  border-color: var(--cyan);
+  background: rgba(61, 216, 255, 0.13);
+}
+
+.railStep.done {
+  border-color: rgba(110, 245, 178, 0.45);
+}
+
+.railStep.locked {
+  opacity: 0.58;
+}
+
+.railMarker {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  color: var(--cyan);
+  background: rgba(61, 216, 255, 0.1);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.railStep.done .railMarker {
+  color: #061018;
+  background: var(--mint);
+}
+
+.railBody {
+  min-width: 0;
+}
+
+.railBody strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.railBody small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.emptyState {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 144px);
+  padding: 24px;
+  text-align: center;
+}
+
+.emptyState svg {
+  color: var(--cyan);
+}
+
+.emptyState h1 {
+  max-width: 500px;
+  margin: 16px 0 0;
+  font-size: 34px;
+  line-height: 1.08;
+}
+
+.emptyState p {
+  max-width: 560px;
+  font-size: 15px;
+}
+
+.assemblyWorkspace {
+  display: grid;
+  gap: 14px;
+}
+
+.workspaceHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.workspaceHeader h1 {
+  margin-top: 4px;
+  font-size: 28px;
+  line-height: 1.12;
+}
+
+.headerPills {
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: end;
+}
+
+.riskPill,
+.visualPill,
+.scoreBadge {
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.riskPill.low,
+.scoreBadge.pass {
+  color: var(--mint);
+  background: rgba(110, 245, 178, 0.08);
+}
+
+.riskPill.medium,
+.scoreBadge.warning {
+  color: var(--amber);
+  background: rgba(255, 191, 102, 0.09);
+}
+
+.riskPill.high,
+.scoreBadge.fail {
+  color: var(--danger);
+  background: rgba(255, 107, 134, 0.09);
+}
+
+.visualPill {
+  color: var(--cyan);
+  background: rgba(61, 216, 255, 0.08);
+}
+
+.instructionBand {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(61, 216, 255, 0.06);
+}
+
+.instructionBand svg {
+  flex: 0 0 auto;
+  color: var(--cyan);
+}
+
+.diagramShell,
+.motionPreview,
+.cautionBand {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.032);
+}
+
+.diagramToolbar {
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.diagramToolbar > div {
+  display: flex;
+  gap: 8px;
+}
+
+.frameStrip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.frameStrip span {
+  padding: 8px;
+  text-align: center;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 12px;
+}
+
+.visualFrame {
+  min-height: 380px;
+  margin: 0 10px 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(rgba(126, 210, 230, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 210, 230, 0.08) 1px, transparent 1px),
+    #07101a;
+  background-size: 32px 32px;
+}
+
+.visualFrame.zoomed {
+  min-height: 560px;
+}
+
+.visualState {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 380px;
+  padding: 24px;
+  text-align: center;
+}
+
+.visualState svg {
+  color: var(--cyan);
+}
+
+.visualState strong {
+  margin-top: 12px;
+}
+
+.visualState.error svg,
+.cautionBand svg {
+  color: var(--amber);
+}
+
+.imageButton {
+  width: 100%;
+  min-height: 380px;
+  padding: 0;
+  background: transparent;
+}
+
+.imageButton img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 380px;
+  object-fit: contain;
+  background: #f7fbff;
+}
+
+.chipRow {
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 10px 10px;
+}
+
+.chipRow span {
+  padding: 6px 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 12px;
+}
+
+.motionPreview {
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+}
+
+.motionPreview strong {
+  display: block;
+  margin-top: 3px;
+}
+
+.motionTrack {
+  position: relative;
+  flex: 1;
+  height: 42px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, rgba(61, 216, 255, 0.05), rgba(110, 245, 178, 0.08));
+}
+
+.motionTrack span {
+  position: absolute;
+  top: 12px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: motionPreview 2.4s ease-in-out infinite;
+}
+
+.motionTrack span:nth-child(2) {
+  animation-delay: 220ms;
+  background: var(--mint);
+}
+
+.motionTrack span:nth-child(3) {
+  animation-delay: 440ms;
+  background: var(--amber);
+}
+
+.partsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.subPanel {
+  min-height: 220px;
+  padding: 12px;
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
+.subPanel h2 {
+  font-size: 15px;
+}
+
+.partRows {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.partRow,
+.screwRow {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 3px 10px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.partRow > span,
+.screwRow > span {
+  grid-row: span 3;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  color: #061018;
+  background: var(--cyan);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.screwRow > span {
+  background: var(--amber);
+}
+
+.partRow strong,
+.screwRow strong {
+  font-size: 13px;
+}
+
+.checkLine {
+  gap: 8px;
+  margin: 12px 0 0;
+  color: var(--mint);
+  font-size: 13px;
+}
+
+.cautionBand {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
+}
+
+.cautionBand span {
+  gap: 6px;
+  color: var(--amber);
+  font-size: 12px;
+}
+
+.flowLabels {
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.flowLabels span {
+  padding: 6px 7px;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 11px;
+}
+
+.progressDrop {
+  min-height: 92px;
+}
+
+.checkActions {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.checkActions .primaryButton,
+.checkActions .secondaryButton,
+.continueButton {
+  width: 100%;
+}
+
+.verifyResult {
+  display: grid;
+  gap: 11px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.verifyResult.pass {
+  border-color: rgba(110, 245, 178, 0.42);
+}
+
+.verifyResult.warning,
+.verifyResult.fail {
+  border-color: rgba(255, 191, 102, 0.42);
+}
+
+.verifyResult > span {
+  width: max-content;
+  padding: 5px 7px;
+}
+
+.verifyResult strong {
+  font-size: 14px;
+}
+
+.verifyResult h3 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.verifyResult ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guidanceBox {
+  padding: 10px;
+  border: 1px solid rgba(61, 216, 255, 0.22);
+  border-radius: var(--radius);
+  background: rgba(61, 216, 255, 0.06);
+}
+
+.emptyCheck {
+  display: grid;
+  place-items: center;
+  min-height: 190px;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.emptyCheck svg {
+  color: var(--cyan);
+}
+
+.continueButton {
+  margin-top: 14px;
+}
+
+.assetStatus {
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 11px;
+}
+
+.assetStatus span {
+  padding: 6px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.spinIcon {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes motionPreview {
+  0% {
+    left: -24px;
+    opacity: 0;
+  }
+  15%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% + 24px);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 1180px) {
+  .topBar,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .statusCluster {
+    justify-content: start;
+  }
+
+  .panel,
+  .inputPanel,
+  .checksPanel {
+    position: static;
+    min-height: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .appShell {
+    padding: 10px;
+  }
+
+  .workspaceHeader,
+  .motionPreview {
+    display: grid;
+  }
+
+  .headerPills {
+    justify-content: start;
+  }
+
+  .partsGrid,
+  .frameStrip {
+    grid-template-columns: 1fr;
+  }
+
+  .emptyState h1 {
+    font-size: 26px;
+  }
+
+  .workspaceHeader h1 {
+    font-size: 22px;
+  }
+
+  .visualFrame,
+  .visualState,
+  .imageButton,
+  .imageButton img {
+    min-height: 280px;
+  }
+}
