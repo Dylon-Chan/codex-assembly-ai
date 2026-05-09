@@ -1105,6 +1105,12 @@ export default function Home() {
           <button>Parts</button>
           <button>Checks</button>
         </nav>
+        <div className="statusCluster">
+          <span className="statusChip">
+            {analysis ? `AI extraction ${Math.round(analysis.confidence * 100)}%` : "Ready for manual"}
+          </span>
+          <span className="noticeText">{notice}</span>
+        </div>
         <div className={`voiceCluster ${voiceState} ${analysis ? "" : "disabled"}`} aria-label="Voice controls">
           <div className="voiceStatus">
             <span className="voicePulse" />
@@ -1131,12 +1137,6 @@ export default function Home() {
               </>
             ) : null}
           </div>
-        </div>
-        <div className="statusCluster">
-          <span className="statusChip">
-            {analysis ? `AI extraction ${Math.round(analysis.confidence * 100)}%` : "Ready for manual"}
-          </span>
-          <span className="noticeText">{notice}</span>
         </div>
       </header>
       <audio ref={remoteAudioRef} autoPlay />
