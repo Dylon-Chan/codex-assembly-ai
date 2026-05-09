@@ -14,9 +14,19 @@ function isImageFile(file: File): boolean {
   return IMAGE_TYPES.has(file.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name);
 }
 
+function imageMimeType(file: File): string {
+  if (IMAGE_TYPES.has(file.type)) return file.type;
+  if (/\.jpe?g$/i.test(file.name)) return "image/jpeg";
+  if (/\.png$/i.test(file.name)) return "image/png";
+  if (/\.webp$/i.test(file.name)) return "image/webp";
+  if (/\.heic$/i.test(file.name)) return "image/heic";
+  if (/\.heif$/i.test(file.name)) return "image/heif";
+  return "image/jpeg";
+}
+
 async function fileToDataUrl(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  return `data:${file.type || "image/jpeg"};base64,${Buffer.from(arrayBuffer).toString("base64")}`;
+  return `data:${imageMimeType(file)};base64,${Buffer.from(arrayBuffer).toString("base64")}`;
 }
 
 export async function POST(request: Request) {

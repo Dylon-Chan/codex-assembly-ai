@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import {
   AlertTriangle,
   Bot,
@@ -1261,10 +1262,12 @@ export default function Home() {
             <div className="assemblyWorkspace">
               <div className="workspaceHeader">
                 <div>
-                  <span>
-                    Step {Math.min(currentStepIndex + 1, stepCount)} of {stepCount}
-                  </span>
-                  <span>{currentStepDuration}</span>
+                  <div className="stepMeta">
+                    <span>
+                      Step {Math.min(currentStepIndex + 1, stepCount)} of {stepCount}
+                    </span>
+                    <span>{currentStepDuration}</span>
+                  </div>
                   <h1>{currentStep?.title ?? "Step details unavailable"}</h1>
                 </div>
                 <div className="headerPills">
@@ -1307,8 +1310,13 @@ export default function Home() {
                     </div>
                   ) : currentVisual?.status === "ready" && currentVisual.imageUrl ? (
                     <button className="imageButton" onClick={() => setIsZoomed((zoomed) => !zoomed)}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img alt={`Generated assembly visual for ${currentStep?.title ?? "current step"}`} src={currentVisual.imageUrl} />
+                      <Image
+                        alt={`Generated assembly visual for ${currentStep?.title ?? "current step"}`}
+                        fill
+                        sizes="(max-width: 860px) 100vw, 60vw"
+                        src={currentVisual.imageUrl}
+                        unoptimized
+                      />
                     </button>
                   ) : currentVisual?.status === "error" ? (
                     <div className="visualState error">
