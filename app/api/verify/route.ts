@@ -29,10 +29,41 @@ async function fileToDataUrl(file: File): Promise<string> {
   return `data:${imageMimeType(file)};base64,${Buffer.from(arrayBuffer).toString("base64")}`;
 }
 
+function parseStringArray(value: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(value || "[]")) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseStepItems(value: unknown): Array<{ id: string; name: string; quantity: number }> {
+  try {
+    const parsed = JSON.parse(String(value || "[]")) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (typeof item !== "object" || item === null) return [];
+      const record = item as Record<string, unknown>;
+      const id = typeof record.id === "string" ? record.id : "";
+      const name = typeof record.name === "string" ? record.name : "";
+      const quantity = typeof record.quantity === "number" && Number.isFinite(record.quantity) ? record.quantity : 1;
+      return id && name ? [{ id, name, quantity }] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const stepTitle = String(formData.get("stepTitle") || "").trim();
+    const instruction = String(formData.get("instruction") || "").trim();
+    const simpleCheck = String(formData.get("simpleCheck") || "").trim();
+    const cautions = parseStringArray(formData.get("cautions"));
+    const parts = parseStepItems(formData.get("parts"));
+    const screws = parseStepItems(formData.get("screws"));
     const photo = formData.get("photo");
     const frame = formData.get("frame");
     const image = isFile(photo) ? photo : isFile(frame) ? frame : null;
@@ -50,7 +81,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = await verifyProgressPhoto(stepTitle, image ? await fileToDataUrl(image) : undefined);
+    const result = await verifyProgressPhoto(
+      { stepTitle, instruction, simpleCheck, cautions, parts, screws },
+      image ? await fileToDataUrl(image) : undefined
+    );
     return NextResponse.json({ result });
   } catch (error) {
     return NextResponse.json(

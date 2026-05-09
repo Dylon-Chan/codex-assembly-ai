@@ -61,6 +61,25 @@ test("generated visual queue replaces demo SVG after analysis", () => {
   assert.doesNotMatch(source, /demoSvg/);
 });
 
+test("motion diagram section stays visible in the dark dashboard", () => {
+  const source = page();
+  assert.doesNotMatch(source, /isMotionDiagramVisible/);
+  assert.doesNotMatch(source, /setIsMotionDiagramVisible/);
+  assert.match(source, /className="diagramToolbar"/);
+  assert.match(source, /className="frameStrip"/);
+  assert.match(source, /className=\{`visualFrame \$\{isZoomed \? "zoomed" : ""\}`\}/);
+});
+
+test("veo motion view uses the original compact dark dashboard row", () => {
+  const source = page();
+  assert.doesNotMatch(source, /className="motionPreviewHeader"/);
+  assert.doesNotMatch(source, /className="motionTitle"/);
+  assert.match(source, /<span>Veo Motion View<\/span>/);
+  assert.match(source, /className="motionStage"/);
+  assert.ok(source.indexOf("<span>Veo Motion View</span>") < source.indexOf('className="motionStage"'));
+  assert.ok(source.indexOf('className="motionStage"') < source.indexOf("Create motion"));
+});
+
 test("progress photo and check flow use verify pipeline", () => {
   const source = page();
   assert.match(source, /PHOTO_ATTACHED_RESULT/);
@@ -101,6 +120,15 @@ test("realtime voice tool handler names are registered", () => {
   ].forEach((toolName) => assert.match(source, new RegExp(toolName)));
 });
 
+test("realtime voice is grounded in the active guide step before answering", () => {
+  const source = page();
+  assert.match(source, /buildRealtimeStepInstructions/);
+  assert.match(source, /Active guide context/);
+  assert.match(source, /For any question about the first step, current step, next instruction, required parts, or the manual guide, call get_current_step before answering/);
+  assert.match(source, /Do not say you cannot see the manual/);
+  assert.match(source, /instructions: buildRealtimeStepInstructions\(analysis, currentStepIndex\)/);
+});
+
 test("camera frame checks use same verification pipeline as uploaded photos", () => {
   const source = page();
   assert.match(source, /captureCameraFrame/);
@@ -111,4 +139,30 @@ test("voice cleanup stops media tracks and closes realtime connection", () => {
   const source = page();
   assert.match(source, /getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
   assert.match(source, /peerConnectionRef\.current\?\.close\(\)/);
+});
+
+test("realtime voice WebRTC exchange uses GA calls endpoint", () => {
+  const source = page();
+  assert.match(source, /\/v1\/realtime\/calls/);
+  assert.doesNotMatch(source, /\/v1\/realtime\?model=/);
+});
+
+test("frontend uses the restored dark AssembleAI dashboard design", () => {
+  const source = page();
+  const styles = readFileSync("app/globals.css", "utf8");
+
+  assert.match(source, /<strong>AssembleAI<\/strong>/);
+  assert.match(source, /visual build assistant/);
+  assert.match(source, /className="workspace"/);
+  assert.doesNotMatch(source, /unboxStage/);
+  assert.doesNotMatch(source, /phoneFrame/);
+  assert.doesNotMatch(source, /ambientPanel/);
+  assert.doesNotMatch(source, /Hey Unbox/);
+  assert.match(styles, /--bg: #05090f/);
+  assert.match(styles, /--cyan: #3dd8ff/);
+  assert.match(styles, /--mint: #6ef5b2/);
+  assert.match(styles, /grid-template-columns: minmax\(260px, 304px\) minmax\(560px, 1fr\) minmax\(300px, 356px\)/);
+  assert.doesNotMatch(styles, /--accent: #E07856/);
+  assert.doesNotMatch(styles, /phoneFrame/);
+  assert.doesNotMatch(styles, /reelSurface/);
 });

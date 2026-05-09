@@ -53,6 +53,12 @@ test("analysis prompt asks for exact product specific output without generic fal
   assert.match(source, /exact product-specific/i);
   assert.match(source, /manual/i);
   assert.match(source, /JSON-only/i);
+  assert.match(source, /Field quality rules/);
+  assert.match(source, /exact product name from the manual cover or title page/);
+  assert.match(source, /single plain-language sentence a non-expert can follow/);
+  assert.match(source, /realistic wall-clock estimate in minutes/);
+  assert.match(source, /safety warnings verbatim or closely paraphrased from the manual/);
+  assert.match(source, /Do not return generic or placeholder steps/);
   assert.doesNotMatch(source, /sampleAnalysis/);
   assert.doesNotMatch(source, /static sample/i);
   assert.doesNotMatch(source, /generic fallback/i);
