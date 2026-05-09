@@ -19,6 +19,19 @@ test("illustration route/helper uses projectName, parts, screws and strict promp
   assert.match(source, /parts section/i);
 });
 
+test("illustration prompt keeps product photos as diagram reference rather than render direction", () => {
+  const source = read("lib/ai/illustrate.ts");
+  assert.match(source, /REFERENCE PHOTO GUIDANCE/);
+  assert.match(source, /Use the attached product photo as reference material, not as the final image style/);
+  assert.match(source, /The final image must still be a simplified technical assembly diagram/);
+  assert.match(source, /Manual diagram notes are guidance, not permission to add extra components/);
+  assert.match(source, /Large, sparse, readable labels — use only the provided part IDs and hardware IDs/);
+  assert.match(source, /formatComponentList/);
+  assert.doesNotMatch(source, /REFERENCE PHOTO — HIGHEST PRIORITY/);
+  assert.doesNotMatch(source, /high-detail product rendering/);
+  assert.doesNotMatch(source, /matching the camera angle of the reference photo as closely as possible/);
+});
+
 test("motion video helper imports google genai and uses Veo generateVideos imageBytes", () => {
   const source = read("lib/ai/motion.ts");
   assert.match(source, /@google\/genai/);

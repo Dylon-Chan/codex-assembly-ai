@@ -61,23 +61,28 @@ test("generated visual queue replaces demo SVG after analysis", () => {
   assert.doesNotMatch(source, /demoSvg/);
 });
 
-test("motion diagram section stays visible in the dark dashboard", () => {
+test("motion diagram section can be hidden and shown from the dark dashboard", () => {
   const source = page();
-  assert.doesNotMatch(source, /isMotionDiagramVisible/);
-  assert.doesNotMatch(source, /setIsMotionDiagramVisible/);
+  assert.match(source, /isMotionDiagramVisible/);
+  assert.match(source, /setIsMotionDiagramVisible/);
+  assert.match(source, /aria-expanded=\{isMotionDiagramVisible\}/);
+  assert.match(source, /Hide motion diagram/);
+  assert.match(source, /Show motion diagram/);
   assert.match(source, /className="diagramToolbar"/);
+  assert.match(source, /\{isMotionDiagramVisible \? \(/);
   assert.match(source, /className="frameStrip"/);
   assert.match(source, /className=\{`visualFrame \$\{isZoomed \? "zoomed" : ""\}`\}/);
 });
 
-test("veo motion view uses the original compact dark dashboard row", () => {
+test("veo motion view presents its title above the video stage", () => {
   const source = page();
-  assert.doesNotMatch(source, /className="motionPreviewHeader"/);
-  assert.doesNotMatch(source, /className="motionTitle"/);
+  assert.match(source, /className="motionPreviewHeader"/);
+  assert.match(source, /className="motionTitle"/);
   assert.match(source, /<span>Veo Motion View<\/span>/);
   assert.match(source, /className="motionStage"/);
+  assert.ok(source.indexOf('className="motionPreviewHeader"') < source.indexOf('className="motionStage"'));
   assert.ok(source.indexOf("<span>Veo Motion View</span>") < source.indexOf('className="motionStage"'));
-  assert.ok(source.indexOf('className="motionStage"') < source.indexOf("Create motion"));
+  assert.ok(source.indexOf("Create motion") < source.indexOf('className="motionStage"'));
 });
 
 test("progress photo and check flow use verify pipeline", () => {

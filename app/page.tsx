@@ -7,7 +7,9 @@ import {
   Bot,
   Camera,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   ClipboardCheck,
   FileText,
   ImageIcon,
@@ -211,6 +213,7 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [isMotionDiagramVisible, setIsMotionDiagramVisible] = useState(true);
   const [visuals, setVisuals] = useState<Record<string, StepVisualState>>({});
   const [motions, setMotions] = useState<Record<string, MotionState>>({});
   const [voiceState, setVoiceState] = useState<VoiceState>("off");
@@ -1376,7 +1379,16 @@ export default function Home() {
               <div className="diagramShell">
                 <div className="diagramToolbar">
                   <strong>Motion diagram</strong>
-                  <div>
+                  <div className="diagramToolbarActions">
+                    <button
+                      aria-controls="motion-diagram-content"
+                      aria-expanded={isMotionDiagramVisible}
+                      className="secondaryButton compactButton"
+                      onClick={() => setIsMotionDiagramVisible((visible) => !visible)}
+                    >
+                      {isMotionDiagramVisible ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                      {isMotionDiagramVisible ? "Hide motion diagram" : "Show motion diagram"}
+                    </button>
                     <button className="iconButton" title="Replay diagram">
                       <RefreshCw size={15} />
                     </button>
@@ -1385,69 +1397,83 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
-                <div className="frameStrip">
-                  {FRAME_LABELS.map((label) => (
-                    <span key={label}>{label}</span>
-                  ))}
-                </div>
-                <div className={`visualFrame ${isZoomed ? "zoomed" : ""}`}>
-                  {currentVisual?.status === "loading" ? (
-                    <div className="visualState">
-                      <Loader2 className="spinIcon" size={30} />
-                      <strong>Generating reference image</strong>
-                      <p>The visual queue is rendering this step in sequence.</p>
+                {isMotionDiagramVisible ? (
+                  <div id="motion-diagram-content">
+                    <div className="frameStrip">
+                      {FRAME_LABELS.map((label) => (
+                        <span key={label}>{label}</span>
+                      ))}
                     </div>
-                  ) : currentVisual?.status === "ready" && currentVisual.imageUrl ? (
-                    <button className="imageButton" onClick={() => setIsZoomed((zoomed) => !zoomed)}>
-                      <Image
-                        alt={`Generated assembly visual for ${currentStep?.title ?? "current step"}`}
-                        fill
-                        sizes="(max-width: 860px) 100vw, 60vw"
-                        src={currentVisual.imageUrl}
-                        unoptimized
-                      />
-                    </button>
-                  ) : currentVisual?.status === "error" ? (
-                    <div className="visualState error">
-                      <AlertTriangle size={30} />
-                      <strong>Reference image failed</strong>
-                      <p>{currentVisual.error ?? "The generated illustration could not be created."}</p>
-                      <button className="secondaryButton" onClick={retryCurrentVisual}>
-                        Retry
-                      </button>
+                    <div className={`visualFrame ${isZoomed ? "zoomed" : ""}`}>
+                      {currentVisual?.status === "loading" ? (
+                        <div className="visualState">
+                          <Loader2 className="spinIcon" size={30} />
+                          <strong>Generating reference image</strong>
+                          <p>The visual queue is rendering this step in sequence.</p>
+                        </div>
+                      ) : currentVisual?.status === "ready" && currentVisual.imageUrl ? (
+                        <button className="imageButton" onClick={() => setIsZoomed((zoomed) => !zoomed)}>
+                          <Image
+                            alt={`Generated assembly visual for ${currentStep?.title ?? "current step"}`}
+                            fill
+                            sizes="(max-width: 860px) 100vw, 60vw"
+                            src={currentVisual.imageUrl}
+                            unoptimized
+                          />
+                        </button>
+                      ) : currentVisual?.status === "error" ? (
+                        <div className="visualState error">
+                          <AlertTriangle size={30} />
+                          <strong>Reference image failed</strong>
+                          <p>{currentVisual.error ?? "The generated illustration could not be created."}</p>
+                          <button className="secondaryButton" onClick={retryCurrentVisual}>
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="visualState">
+                          <ImageIcon size={30} />
+                          <strong>Queued visual</strong>
+                          <p>This step is waiting for the generated illustration queue.</p>
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="visualState">
-                      <ImageIcon size={30} />
-                      <strong>Queued visual</strong>
-                      <p>This step is waiting for the generated illustration queue.</p>
+                    <div className="chipRow">
+                      {currentStepParts.map((part) => (
+                        <span key={part.id}>{part.quantity}x {part.name}</span>
+                      ))}
+                      {currentStepScrews.map((screw) => (
+                        <span key={screw.id}>{screw.quantity}x {screw.name}</span>
+                      ))}
                     </div>
-                  )}
-                </div>
-                <div className="chipRow">
-                  {currentStepParts.map((part) => (
-                    <span key={part.id}>{part.quantity}x {part.name}</span>
-                  ))}
-                  {currentStepScrews.map((screw) => (
-                    <span key={screw.id}>{screw.quantity}x {screw.name}</span>
-                  ))}
-                </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className={`motionPreview ${currentMotion?.status ?? "idle"}`}>
-                <div>
-                  <span>Veo Motion View</span>
-                  <strong>
-                    {currentMotion?.status === "ready"
-                      ? "Motion ready"
-                      : currentMotion && ACTIVE_MOTION_STATUSES.has(currentMotion.status)
-                        ? "Creating motion"
-                        : currentMotion?.status === "unavailable"
-                          ? "Motion unavailable"
-                          : currentMotion?.status === "error"
-                            ? "Motion failed"
-                            : "CSS technical preview"}
-                  </strong>
+                <div className="motionPreviewHeader">
+                  <div className="motionTitle">
+                    <span>Veo Motion View</span>
+                    <strong>
+                      {currentMotion?.status === "ready"
+                        ? "Motion ready"
+                        : currentMotion && ACTIVE_MOTION_STATUSES.has(currentMotion.status)
+                          ? "Creating motion"
+                          : currentMotion?.status === "unavailable"
+                            ? "Motion unavailable"
+                            : currentMotion?.status === "error"
+                              ? "Motion failed"
+                              : "CSS technical preview"}
+                    </strong>
+                  </div>
+                  <button
+                    className="secondaryButton"
+                    disabled={!currentStep || !canCreateCurrentMotion}
+                    onClick={() => currentStep && void createMotionForStep(currentStep)}
+                  >
+                    <Play size={15} />
+                    Create motion
+                  </button>
                 </div>
                 <div className="motionStage">
                   {currentMotion?.status === "ready" && currentMotion.videoUrl ? (
@@ -1470,14 +1496,6 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-                <button
-                  className="secondaryButton"
-                  disabled={!currentStep || !canCreateCurrentMotion}
-                  onClick={() => currentStep && void createMotionForStep(currentStep)}
-                >
-                  <Play size={15} />
-                  Create motion
-                </button>
               </div>
 
               <div className="partsGrid">

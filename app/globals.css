@@ -660,6 +660,17 @@ button:disabled {
   gap: 8px;
 }
 
+.diagramToolbarActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.compactButton {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .frameStrip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -746,9 +757,21 @@ button:disabled {
 }
 
 .motionPreview {
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 14px;
   padding: 12px;
+}
+
+.motionPreviewHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.motionTitle {
+  min-width: 0;
 }
 
 .motionPreview strong {
@@ -757,8 +780,8 @@ button:disabled {
 }
 
 .motionStage {
-  flex: 1;
-  min-width: 220px;
+  width: 100%;
+  min-width: 0;
 }
 
 .motionTrack {
@@ -831,7 +854,7 @@ button:disabled {
   display: block;
   width: 100%;
   max-width: 100%;
-  max-height: 260px;
+  max-height: 420px;
   aspect-ratio: 16 / 9;
   border: 1px solid rgba(110, 245, 178, 0.32);
   border-radius: var(--radius);
@@ -1207,8 +1230,13 @@ button:disabled {
   }
 
   .workspaceHeader,
-  .motionPreview {
+  .motionPreviewHeader {
     display: grid;
+  }
+
+  .motionPreviewHeader .secondaryButton,
+  .diagramToolbarActions .secondaryButton {
+    width: 100%;
   }
 
   .motionStage {
