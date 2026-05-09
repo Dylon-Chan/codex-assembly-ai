@@ -268,6 +268,12 @@ export default function Home() {
     cameraEnabledRef.current = cameraEnabled;
   }, [cameraEnabled]);
 
+  useEffect(() => {
+    if (!videoRef.current || !cameraStreamRef.current) return;
+    videoRef.current.srcObject = cameraStreamRef.current;
+    void videoRef.current.play().catch(() => undefined);
+  }, [cameraEnabled, cameraPending]);
+
   const initializeVisualQueue = useCallback(
     (nextAnalysis: AnalysisResult) => {
       const runId = runIdRef.current + 1;
@@ -620,10 +626,7 @@ export default function Home() {
       }
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       cameraStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => undefined);
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream;
       if (cameraRunIdRef.current !== cameraRunId) {
         stream.getTracks().forEach((track) => track.stop());
         if (videoRef.current?.srcObject === stream) videoRef.current.srcObject = null;
@@ -974,6 +977,7 @@ export default function Home() {
       peerConnectionRef.current = peerConnection;
       micStream.getTracks().forEach((track) => peerConnection.addTrack(track, micStream));
       peerConnection.ontrack = (event) => {
+        if (voiceRunIdRef.current !== voiceRunId) return;
         const [remoteStream] = event.streams;
         if (remoteAudioRef.current && remoteStream) {
           remoteAudioRef.current.srcObject = remoteStream;
@@ -996,6 +1000,7 @@ export default function Home() {
       }
       dataChannelRef.current = dataChannel;
       dataChannel.onopen = () => {
+        if (voiceRunIdRef.current !== voiceRunId) return;
         setVoiceState("listening");
         setVoiceAction("Listening. Ask for the next instruction, parts, or a camera check.");
         dataChannel.send(
@@ -1473,7 +1478,7 @@ export default function Home() {
                 {cameraPending ? "Starting camera" : cameraEnabled ? "Disable camera" : "Enable camera"}
               </button>
             </div>
-            {cameraEnabled ? (
+            {cameraEnabled || cameraPending ? (
               <video ref={videoRef} autoPlay muted playsInline />
             ) : (
               <div className="cameraPlaceholder">
