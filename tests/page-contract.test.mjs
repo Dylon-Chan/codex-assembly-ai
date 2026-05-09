@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+
+const page = () => readFileSync("app/page.tsx", "utf8");
+
+test("page initial analysis state is null and first run is empty", () => {
+  const source = page();
+  assert.match(source, /useState<AnalysisResult \| null>\(null\)/);
+  assert.match(source, /useState\(0\)/);
+  assert.match(source, /useState<Set<string>>\(new Set\(\)\)/);
+  assert.match(source, /useState<VerifyResult \| null>\(null\)/);
+  assert.match(source, /Upload a manual or try the sample PDF\./);
+  assert.match(source, /Load a manual to build a visual guide/);
+});
+
+test("sample button fetches bundled sample PDF and posts to analyze", () => {
+  const source = page();
+  assert.match(source, /\/samples\/assembleai-sample-manual\.pdf/);
+  assert.match(source, /fetch\("\/api\/analyze"/);
+  assert.match(source, /formData\.append\("manual"/);
+});
+
+test("sample flow does not directly set sampleAnalysis client-side", () => {
+  const source = page();
+  assert.doesNotMatch(source, /sampleAnalysis/);
+  assert.doesNotMatch(source, /setAnalysis\(\s*\{/);
+});
+
+test("page guards optional screws instruction and simpleCheck", () => {
+  const source = page();
+  assert.match(source, /currentStep\?\.instruction/);
+  assert.match(source, /currentStep\?\.simpleCheck/);
+  assert.match(source, /currentStep\?\.screws \?\?/);
+});
