@@ -76,12 +76,15 @@ export default function Home() {
   const retryRunIdRef = useRef(0);
   const analysisRunIdRef = useRef(0);
   const verifyRunIdRef = useRef(0);
+  const motionRunIdsRef = useRef<Record<string, number>>({});
+  const motionPollInFlightRef = useRef<Set<string>>(new Set());
   const motionsRef = useRef<Record<string, MotionState>>({});
 
   const currentStep = analysis?.steps[currentStepIndex];
   const currentVisual = currentStep ? visuals[currentStep.id] : undefined;
   const currentMotion = currentStep ? motions[currentStep.id] : undefined;
-  const canCreateCurrentMotion = currentVisual?.status === "ready" && Boolean(currentVisual.imageUrl);
+  const currentMotionBusy = Boolean(currentMotion && ACTIVE_MOTION_STATUSES.has(currentMotion.status));
+  const canCreateCurrentMotion = currentVisual?.status === "ready" && Boolean(currentVisual.imageUrl) && !currentMotionBusy;
   const currentStepDone = Boolean(currentStep && completedSteps.has(currentStep.id));
   const canContinue =
     Boolean(analysis && currentStepIndex < (analysis?.steps.length ?? 0) - 1) &&
@@ -211,6 +214,10 @@ export default function Home() {
       }
 
       const visual = visuals[step.id];
+      const currentMotionState = motionsRef.current[step.id];
+      if (currentMotionState && ACTIVE_MOTION_STATUSES.has(currentMotionState.status)) {
+        return;
+      }
       if (visual?.status !== "ready" || !visual.imageUrl) {
         setStepMotion(step.id, {
           status: "error",
@@ -220,6 +227,8 @@ export default function Home() {
         return;
       }
 
+      const motionRunId = (motionRunIdsRef.current[step.id] ?? 0) + 1;
+      motionRunIdsRef.current[step.id] = motionRunId;
       setStepMotion(step.id, { status: "creating", progress: 20 });
 
       try {
@@ -236,6 +245,7 @@ export default function Home() {
         if (!response.ok || !payload.status) {
           throw new Error(payload.error || "Motion creation failed.");
         }
+        if (motionRunIdsRef.current[step.id] !== motionRunId) return;
         setStepMotion(step.id, {
           status: payload.status,
           progress: payload.progress ?? (payload.status === "ready" ? 100 : 20),
@@ -244,6 +254,7 @@ export default function Home() {
           error: payload.error
         });
       } catch (error) {
+        if (motionRunIdsRef.current[step.id] !== motionRunId) return;
         setStepMotion(step.id, {
           status: "error",
           progress: 0,
@@ -260,6 +271,9 @@ export default function Home() {
     let isCancelled = false;
 
     const pollMotion = async (stepId: string, operationId: string) => {
+      const pollKey = `${stepId}:${operationId}`;
+      if (motionPollInFlightRef.current.has(pollKey)) return;
+      motionPollInFlightRef.current.add(pollKey);
       try {
         const response = await fetch("/api/motion/poll", {
           method: "POST",
@@ -274,13 +288,14 @@ export default function Home() {
         setMotions((previous) => {
           const current = previous[stepId];
           if (!current || current.operationId !== operationId) return previous;
+          if (current.status === "ready" || current.status === "error" || current.status === "unavailable") return previous;
           return {
             ...previous,
             [stepId]: {
               status: payload.status,
-              progress: payload.progress ?? current.progress,
+              progress: Math.max(current.progress, payload.progress ?? current.progress),
               operationId: payload.operationId ?? current.operationId,
-              videoUrl: payload.videoUrl,
+              videoUrl: payload.videoUrl ?? current.videoUrl,
               error: payload.error
             }
           };
@@ -300,6 +315,8 @@ export default function Home() {
             }
           };
         });
+      } finally {
+        motionPollInFlightRef.current.delete(pollKey);
       }
     };
 
@@ -392,6 +409,8 @@ export default function Home() {
     setIsAnalyzing(false);
     setIsChecking(false);
     setIsZoomed(false);
+    motionRunIdsRef.current = {};
+    motionPollInFlightRef.current.clear();
     setVisuals({});
     setMotions({});
   }, []);
