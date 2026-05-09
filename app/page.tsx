@@ -65,8 +65,11 @@ export default function Home() {
   const [visuals, setVisuals] = useState<Record<string, StepVisualState>>({});
   const [motions, setMotions] = useState<Record<string, MotionState>>({});
   const [voiceState, setVoiceState] = useState<VoiceState>("off");
+  const [verifiedStepId, setVerifiedStepId] = useState<string | null>(null);
   const runIdRef = useRef(0);
   const retryRunIdRef = useRef(0);
+  const analysisRunIdRef = useRef(0);
+  const verifyRunIdRef = useRef(0);
 
   const currentStep = analysis?.steps[currentStepIndex];
   const currentVisual = currentStep ? visuals[currentStep.id] : undefined;
@@ -74,7 +77,12 @@ export default function Home() {
   const currentStepDone = Boolean(currentStep && completedSteps.has(currentStep.id));
   const canContinue =
     Boolean(analysis && currentStepIndex < (analysis?.steps.length ?? 0) - 1) &&
-    Boolean(verifyResult && (verifyResult.status === "pass" || verifyResult.score >= 0.72));
+    Boolean(
+      currentStep &&
+        verifiedStepId === currentStep.id &&
+        verifyResult &&
+        (verifyResult.status === "pass" || verifyResult.score >= 0.72)
+    );
 
   const stepCount = analysis?.steps.length ?? 0;
   const completedCount = completedSteps.size;
@@ -168,6 +176,8 @@ export default function Home() {
 
   const buildGuideFromFile = useCallback(
     async (file: File) => {
+      const analysisRunId = analysisRunIdRef.current + 1;
+      analysisRunIdRef.current = analysisRunId;
       const formData = new FormData();
       formData.append("manual", file);
       if (productPhoto) formData.append("productPhoto", productPhoto);
@@ -179,18 +189,21 @@ export default function Home() {
         const payload = (await response.json()) as AnalyzeResponse;
         if (!response.ok) throw new Error(payload.error || "Manual analysis failed.");
         if (!payload.analysis) throw new Error("Manual analysis did not return a guide.");
+        if (analysisRunIdRef.current !== analysisRunId) return;
         const nextAnalysis = payload.analysis;
         setAnalysis(nextAnalysis);
         setCurrentStepIndex(0);
         setCompletedSteps(new Set());
         setVerifyResult(null);
+        setVerifiedStepId(null);
         setProgressPhoto(null);
         setNotice("Guide built. Generating step visuals.");
         initializeVisualQueue(nextAnalysis);
       } catch (error) {
+        if (analysisRunIdRef.current !== analysisRunId) return;
         setNotice(error instanceof Error ? error.message : "Manual analysis failed.");
       } finally {
-        setIsAnalyzing(false);
+        if (analysisRunIdRef.current === analysisRunId) setIsAnalyzing(false);
       }
     },
     [initializeVisualQueue, partPhotos, productPhoto]
@@ -218,10 +231,13 @@ export default function Home() {
   const resetWorkspace = useCallback(() => {
     runIdRef.current += 1;
     retryRunIdRef.current += 1;
+    analysisRunIdRef.current += 1;
+    verifyRunIdRef.current += 1;
     setAnalysis(null);
     setCurrentStepIndex(0);
     setCompletedSteps(new Set());
     setVerifyResult(null);
+    setVerifiedStepId(null);
     setManualFile(null);
     setProductPhoto(null);
     setPartPhotos([]);
@@ -237,12 +253,16 @@ export default function Home() {
   const handleProgressPhoto = useCallback((file: File | null) => {
     setProgressPhoto(file);
     setVerifyResult(file ? PHOTO_ATTACHED_RESULT : null);
+    setVerifiedStepId(null);
     setNotice(file ? "Progress photo attached. Run AI check when ready." : "Progress photo cleared.");
   }, []);
 
   const checkCurrentStep = useCallback(
     async (photoOverride?: File | null) => {
       if (!currentStep) return;
+      const checkedStepId = currentStep.id;
+      const verifyRunId = verifyRunIdRef.current + 1;
+      verifyRunIdRef.current = verifyRunId;
       const photo = photoOverride ?? progressPhoto;
       const formData = new FormData();
       formData.append("stepTitle", currentStep.title);
@@ -254,15 +274,18 @@ export default function Home() {
         const response = await fetch("/api/verify", { method: "POST", body: formData });
         const payload = (await response.json().catch(() => ({}))) as VerifyResponse;
         if (!response.ok || !payload.result) throw new Error(payload.error || "Progress verification failed.");
+        if (verifyRunIdRef.current !== verifyRunId) return;
         const result = payload.result;
         setVerifyResult(result);
+        setVerifiedStepId(checkedStepId);
         if (result.status === "pass" || result.score >= 0.72) {
-          setCompletedSteps((previous) => new Set(previous).add(currentStep.id));
+          setCompletedSteps((previous) => new Set(previous).add(checkedStepId));
           setNotice("Step verified. Ready to continue.");
         } else {
           setNotice("AI found something to fix before continuing.");
         }
       } catch (error) {
+        if (verifyRunIdRef.current !== verifyRunId) return;
         setVerifyResult({
           status: "fail",
           score: 0,
@@ -270,9 +293,10 @@ export default function Home() {
           checklist: ["Verification request did not complete"],
           nextFix: error instanceof Error ? error.message : "Retake the photo and try again."
         });
+        setVerifiedStepId(checkedStepId);
         setNotice(error instanceof Error ? error.message : "Progress verification failed.");
       } finally {
-        setIsChecking(false);
+        if (verifyRunIdRef.current === verifyRunId) setIsChecking(false);
       }
     },
     [currentStep, progressPhoto]
@@ -283,6 +307,7 @@ export default function Home() {
     setCurrentStepIndex((index) => index + 1);
     setProgressPhoto(null);
     setVerifyResult(null);
+    setVerifiedStepId(null);
     setIsZoomed(false);
     setNotice("Next step loaded. Attach a progress photo when ready.");
   }, [analysis, canContinue, currentStepIndex]);
@@ -296,6 +321,7 @@ export default function Home() {
     setCurrentStepIndex(index);
     setProgressPhoto(null);
     setVerifyResult(null);
+    setVerifiedStepId(null);
     setIsZoomed(false);
     setNotice("Step loaded.");
   }, []);
