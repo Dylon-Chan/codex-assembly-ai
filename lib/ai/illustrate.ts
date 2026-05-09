@@ -14,64 +14,55 @@ type ImageGenerationResponse = {
   error?: unknown;
 };
 
+function formatComponentList<T extends { id: string; name: string; quantity: number }>(items: T[], emptyLabel: string): string {
+  return items.length
+    ? items.map((item) => `- ${item.id}: ${item.name} (qty ${item.quantity})`).join("\n")
+    : `- ${emptyLabel}`;
+}
+
 export function buildIllustrationPrompt(projectName: string, step: AssemblyStep, hasReferencePhoto: boolean): string {
-  const parts = step.parts.map((part) => `${part.id}: ${part.name} x${part.quantity}`).join(", ") || "No parts listed";
-  const screws = step.screws.map((screw) => `${screw.id}: ${screw.name} x${screw.quantity}`).join(", ") || "No hardware listed";
+  const parts = formatComponentList(step.parts, "None listed");
+  const screws = formatComponentList(step.screws, "None listed");
   const cautions = step.cautions.join(", ") || "No cautions listed";
   const manualDiagramSection = step.visualDescription
     ? [
-        "MANUAL DIAGRAM FOR THIS STEP",
-        "The original instruction manual contains a diagram for this step. Use the description below as the definitive reference for the intermediate assembly state — which parts are already joined, which parts are mid-motion, and how the half-assembled product looks at this exact point in the build.",
+        "MANUAL DIAGRAM NOTES",
+        "Use this extracted description to understand the intermediate assembly state, motion direction, and visible alignment cues.",
         step.visualDescription,
-        "Reproduce this intermediate state faithfully. The user must be able to compare your illustration against the manual and see that they match.",
+        "Manual diagram notes are guidance, not permission to add extra components, extra labels, extra hardware, or a separate manual-page layout.",
         ""
       ].join("\n")
     : "";
 
   const referenceSection = hasReferencePhoto
     ? [
-        "REFERENCE PHOTO — HIGHEST PRIORITY",
-        "The attached photo shows the actual physical product. You must use it as the primary visual source for every part you draw.",
-        "Reproduction requirements (non-negotiable):",
-        "- COLOR: Reproduce every part's exact color from the photo. Do not substitute, simplify, or average colors. If a part is burnt-orange with dark-grey joints, draw it that way.",
-        "- SHAPE & SILHOUETTE: Match the precise silhouette of each sub-assembly. Boxy parts must stay boxy; curved panels must stay curved. Do not round or simplify geometry.",
-        "- SURFACE DETAIL: Reproduce panel lines, vents, ridge details, peg holes, hinge knuckles, and any molded texture visible in the photo at the relevant scale.",
-        "- PROPORTIONS: Keep the relative size of every part exactly as seen. A wide torso stays wide; stubby limbs stay stubby.",
-        "- PART COUNT: Draw exactly the number of discrete parts visible in the photo for this sub-assembly — no more, no fewer.",
-        "- ORIENTATION: Match the overall orientation and perspective angle to the photo so the user can immediately recognize the real object.",
-        "Generic robot, vehicle, or toy silhouettes are FORBIDDEN. If your draft does not look unmistakably like the product in the reference photo, revise it.",
+        "REFERENCE PHOTO GUIDANCE",
+        "Use the attached product photo as reference material, not as the final image style.",
+        "- Borrow real colors, broad proportions, part silhouettes, and visible surface cues from the photo.",
+        "- The final image must still be a simplified technical assembly diagram on a white background.",
+        "- Do not create a lifestyle image, product beauty render, camera-matched photo recreation, or decorative scene.",
+        "- If the photo conflicts with the step components listed below, prefer the listed step components.",
         ""
       ].join("\n")
     : "";
 
-  const visualStyle = hasReferencePhoto
-    ? [
-        "VISUAL STYLE",
-        "- Isometric or 3/4 view that best shows the mechanical action for this step, matching the camera angle of the reference photo as closely as possible",
-        "- Crisp white background",
-        "- Render parts with their true colors from the reference photo; add only a thin dark outline (1–2 px equivalent) to separate adjacent surfaces",
-        "- Highlight the moving part(s) with a translucent teal/cyan overlay and a dashed motion-path arrow showing direction and end position",
-        "- Ghost the starting position of moving parts with 40% opacity so before-and-after is visible in one frame",
-        "- Amber glow on any fastener entry points",
-        "- Large, sparse, high-contrast labels using the provided part IDs only; position labels outside the silhouette with a short leader line",
-        "- Overall illustration quality: high-detail product rendering suitable for a professional instruction manual"
-      ].join("\n")
-    : [
-        "VISUAL STYLE",
-        "- Orthographic technical-manual view or clean isometric exploded view cropped tightly to this step",
-        "- White background",
-        "- Graphite outlines, teal active-part highlights, amber fastener highlights",
-        "- Ghosted origin showing starting position",
-        "- Movement path arrows from start to final seated position",
-        "- Final state showing part fully placed, holes aligned, fasteners seated",
-        "- Before-and-after placement visible in a single frame",
-        "- Large, sparse, readable labels; Label only provided part IDs and hardware IDs"
-      ].join("\n");
+  const visualStyle = [
+    "VISUAL STYLE",
+    "- Orthographic technical-manual view or clean isometric exploded view cropped tightly to this step",
+    "- White background",
+    "- Graphite outlines, teal active-part highlights, amber fastener highlights",
+    "- Ghosted origin showing starting position",
+    "- Movement path arrows from start to final seated position",
+    "- Final state showing part fully placed, holes aligned, fasteners seated",
+    "- Before-and-after placement visible in a single frame",
+    "- Large, sparse, readable labels — use only the provided part IDs and hardware IDs. Label only provided part IDs and hardware IDs"
+  ].join("\n");
 
   return [
     "ROLE",
     "You are a professional product illustrator creating a manual-accurate single-step assembly diagram for an official instruction manual. Accuracy to the real product is the top priority.",
     "",
+    "The image should align with the step and instruction. It should be a single step and should not be a multi-step image.",
     referenceSection,
     manualDiagramSection,
     "SUBJECT",
@@ -81,8 +72,11 @@ export function buildIllustrationPrompt(projectName: string, step: AssemblyStep,
     `Cautions: ${cautions}`,
     "",
     "COMPONENTS FOR THIS STEP",
-    `Parts: ${parts}`,
-    `Hardware: ${screws}`,
+    "Parts:",
+    parts,
+    "",
+    "Hardware:",
+    screws,
     "",
     visualStyle,
     "",
@@ -93,8 +87,7 @@ export function buildIllustrationPrompt(projectName: string, step: AssemblyStep,
     "- Do not invent parts, holes, fasteners, brackets, tools, or labels not listed above.",
     "- Do not invent hardware. Hardware must come only from the hardware/parts section above.",
     "- No human hands, no room background, no lifestyle context, no decorative elements.",
-    "- No text smaller than would be clearly readable at 512 px wide.",
-    hasReferencePhoto ? "- CRITICAL: The output must be immediately recognizable as the same product shown in the reference photo. If it is not, it is wrong." : ""
+    "- No text smaller than would be clearly readable at 512 px wide."
   ].filter(Boolean).join("\n");
 }
 
