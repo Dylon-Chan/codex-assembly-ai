@@ -9,7 +9,7 @@ test("parseJsonOutput supports output_text and nested output content", () => {
   const source = openaiSource();
   assert.match(source, /output_text/);
   assert.match(source, /raw\.output/);
-  assert.match(source, /output_text/);
+  assert.match(source, /content/);
   assert.match(source, /parseJsonOutput/);
 });
 
