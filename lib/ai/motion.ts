@@ -7,6 +7,9 @@ export type MotionCreateResult =
   | { status: "queued" | "in_progress" | "ready"; operationId?: string; videoUrl?: string; progress: number };
 
 const VEO_MODEL = "veo-3.1-fast-generate-preview";
+const MAX_REFERENCE_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_REFERENCE_HOSTS = new Set(["oaidalleapiprodscus.blob.core.windows.net", "cdn.openai.com"]);
+const ALLOWED_VIDEO_HOST_SUFFIXES = [".googleapis.com", ".googleusercontent.com"];
 
 type MotionRecord = Record<string, unknown>;
 
@@ -42,17 +45,43 @@ export async function referenceToInlineImage(referenceImageUrl: string): Promise
   if (referenceImageUrl.startsWith("data:")) {
     const [header, data = ""] = referenceImageUrl.split(",", 2);
     const mimeType = header.match(/^data:([^;]+);base64$/)?.[1] || "image/png";
+    if (!mimeType.startsWith("image/")) {
+      throw new Error("Reference image data URL must be an image.");
+    }
+    if (Buffer.byteLength(data, "base64") > MAX_REFERENCE_IMAGE_BYTES) {
+      throw new Error("Reference image must be 8 MB or smaller.");
+    }
     return { imageBytes: data, mimeType };
   }
 
-  const response = await fetch(referenceImageUrl);
+  const parsed = new URL(referenceImageUrl);
+  if (parsed.protocol !== "https:" || !ALLOWED_REFERENCE_HOSTS.has(parsed.hostname)) {
+    throw new Error("Reference image URL must be a trusted generated image URL.");
+  }
+
+  const response = await fetch(parsed.toString());
   if (!response.ok) {
     throw new Error("Reference image could not be loaded.");
   }
 
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > MAX_REFERENCE_IMAGE_BYTES) {
+    throw new Error("Reference image must be 8 MB or smaller.");
+  }
+
+  const mimeType = response.headers.get("content-type") || "image/png";
+  if (!mimeType.startsWith("image/")) {
+    throw new Error("Reference URL did not return an image.");
+  }
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength > MAX_REFERENCE_IMAGE_BYTES) {
+    throw new Error("Reference image must be 8 MB or smaller.");
+  }
+
   return {
-    imageBytes: Buffer.from(await response.arrayBuffer()).toString("base64"),
-    mimeType: response.headers.get("content-type") || "image/png"
+    imageBytes: bytes.toString("base64"),
+    mimeType
   };
 }
 
@@ -143,7 +172,13 @@ export async function proxyMotionContent(uri: string): Promise<Response> {
   const key = geminiKey();
   if (!key) return new Response("GEMINI_API_KEY or GOOGLE_API_KEY is required for Veo motion.", { status: 500 });
 
-  const response = await fetch(uri, { headers: { "x-goog-api-key": key } });
+  const parsed = new URL(uri);
+  const trustedVideoHost = parsed.protocol === "https:" && ALLOWED_VIDEO_HOST_SUFFIXES.some((suffix) => parsed.hostname.endsWith(suffix));
+  if (!trustedVideoHost) {
+    return new Response("Motion content URI is not trusted.", { status: 400 });
+  }
+
+  const response = await fetch(parsed.toString(), { headers: { "x-goog-api-key": key } });
   if (!response.ok) {
     return new Response("Motion content could not be loaded.", { status: response.status });
   }
