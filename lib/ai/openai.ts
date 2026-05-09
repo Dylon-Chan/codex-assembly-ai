@@ -34,9 +34,9 @@ export async function callResponses({ body, apiKey }: FetchOptions): Promise<unk
   return raw;
 }
 
-export function extractResponseText(input: unknown): string {
-  if (typeof input !== "object" || input === null) return "";
-  const raw = input as Record<string, unknown>;
+export function extractResponseText(rawInput: unknown): string {
+  if (typeof rawInput !== "object" || rawInput === null) return "";
+  const raw = rawInput as Record<string, unknown>;
   if (typeof raw.output_text === "string") return raw.output_text;
 
   const output = Array.isArray(raw.output) ? raw.output : [];
