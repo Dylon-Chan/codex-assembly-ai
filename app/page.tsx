@@ -173,7 +173,7 @@ function buildRealtimeStepInstructions(analysis: AnalysisResult, stepIndex: numb
   return [
     "You are Aria, a hands-free assembly assistant inside AssembleAI. Be concise and safety-conscious.",
     "",
-    "Active guide context is provided below. Guide-grounded answers must use this state.",
+    "The active guide context is embedded below. Use it directly to answer questions — do NOT say you lack guide context.",
     `ACTIVE STEP: ${stepIndex + 1} of ${analysis.steps.length} — ${step.title}`,
     `Instruction: ${step.instruction}`,
     `Check: ${step.simpleCheck}`,
@@ -182,17 +182,15 @@ function buildRealtimeStepInstructions(analysis: AnalysisResult, stepIndex: numb
     `Cautions: ${cautions}`,
     "",
     "TOOL RULES — apply exactly, no exceptions:",
-    "• User says next / proceed / continue / move on / step 2 → call go_to_next_step. Then read the new step title and instruction from the tool result.",
-    "• User says back / previous / go back → call go_to_previous_step. Then read the new step title and instruction from the tool result.",
-    "• User asks what the current step is, what to do, or about parts → call get_current_step.",
-    "• For any question about the first step, current step, next instruction, required parts, or the manual guide, call get_current_step before answering.",
-    "• User says they finished or are done → call mark_current_step_done.",
+    "• User says next / proceed / continue / move on → call go_to_next_step. Confirm the new step title from the tool result.",
+    "• User says back / previous / go back → call go_to_previous_step. Confirm the new step title from the tool result.",
     "• User asks for a camera or photo check → call check_current_camera_frame.",
+    "• User says they finished or are done → call mark_current_step_done.",
     "• User asks to stop or end the session → call stop_voice_agent.",
+    "• For navigation or state changes, always use the tool. For questions about the current step, parts, or cautions, use the embedded context above.",
     "",
     "ABSOLUTE RULES:",
-    "• NEVER ask the user to send, paste, or share guide context. All guide data comes from the tools above.",
-    "• Do not say you cannot see the manual.",
+    "• The guide is embedded above. Never say you cannot see the manual or that you lack context.",
     "• Do not speak until the user addresses you.",
     "• Answers must be short plain sentences. No bullet points, no markdown."
   ].join("\n");
@@ -881,6 +879,13 @@ export default function Home() {
       const activeStepIndex = currentStepIndexRef.current;
       const activeStep = activeAnalysis?.steps[activeStepIndex];
 
+      // DIAGNOSTIC — remove once voice context bug is resolved
+      console.log("[tool-call]", name, {
+        hasAnalysis: Boolean(activeAnalysis),
+        stepIndex: activeStepIndex,
+        stepTitle: activeStep?.title ?? "(none)"
+      });
+
       if (!activeAnalysis || !activeStep) {
         return { ok: false, message: "Upload a manual or try the sample PDF before using voice tools." };
       }
@@ -985,6 +990,27 @@ export default function Home() {
   const handleRealtimeEvent = useCallback(
     (event: Record<string, unknown>) => {
       const type = typeof event.type === "string" ? event.type : "";
+
+      // DIAGNOSTIC — remove once voice context bug is resolved
+      if (
+        type.startsWith("session") ||
+        type.startsWith("response.function_call") ||
+        type.startsWith("response.output_item") ||
+        type === "error"
+      ) {
+        console.log("[realtime]", type, event);
+      }
+
+      // Send the greeting only after the model confirms the session update was applied.
+      // This guarantees guide context and tools are active before the first response.
+      if (type === "session.updated") {
+        sendRealtimeEvent({
+          type: "response.create",
+          response: {
+            instructions: "Greet the user as Aria. In one sentence, name the active step and offer to help. Do not read the full instruction unprompted."
+          }
+        });
+      }
 
       if (type.includes("input_audio") && typeof event.transcript === "string") {
         setVoiceTranscript(event.transcript);
@@ -1108,6 +1134,9 @@ export default function Home() {
         if (voiceRunIdRef.current !== voiceRunId) return;
         setVoiceState("listening");
         setVoiceAction("Listening. Ask for the next instruction, parts, or a camera check.");
+        // Send session.update first. The greeting response.create is deferred until
+        // the model confirms session.updated — otherwise the greeting can fire before
+        // the guide context and tools are applied, causing "no guide context" responses.
         dataChannel.send(
           JSON.stringify({
             type: "session.update",
@@ -1117,14 +1146,6 @@ export default function Home() {
               tools: REALTIME_TOOLS,
               tool_choice: "auto",
               instructions: buildRealtimeStepInstructions(analysis, currentStepIndex)
-            }
-          })
-        );
-        dataChannel.send(
-          JSON.stringify({
-            type: "response.create",
-            response: {
-              instructions: "Greet the user as Aria. In one sentence, say which step is active and offer to help. Do not read the full instruction unprompted."
             }
           })
         );
